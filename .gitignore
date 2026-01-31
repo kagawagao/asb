@@ -3,9 +3,13 @@ node_modules/
 package-lock.json
 yarn.lock
 
-# Build output
+# TypeScript/Node.js build output (legacy)
 dist/
 *.tsbuildinfo
+
+# Rust build output
+target/
+Cargo.lock
 
 # Logs
 logs
@@ -41,3 +45,4 @@ coverage/
 *.apk
 *.ap_
 *.flat
+
