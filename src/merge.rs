@@ -59,29 +59,39 @@ impl SkinMerger {
         let mut content = Vec::new();
         file.read_to_end(&mut content)?;
 
-        let content_str = String::from_utf8_lossy(&content);
-        let mut lines = content_str.lines();
-
-        // Read header
-        let header = lines.next().context("Missing header")?;
+        // Read header line (text)
+        let mut offset = 0;
+        let header_end = content.iter()
+            .position(|&b| b == b'\n')
+            .context("Missing header line")?;
+        let header = std::str::from_utf8(&content[..header_end])?;
+        
         if !header.starts_with("ASB_MERGED_V1") {
             anyhow::bail!("Invalid merged package format");
         }
+        offset = header_end + 1;
 
-        let count: usize = lines
-            .next()
-            .context("Missing package count")?
-            .parse()
-            .context("Invalid package count")?;
+        // Read count line (text)
+        let count_end = content[offset..]
+            .iter()
+            .position(|&b| b == b'\n')
+            .context("Missing count line")?;
+        let count_str = std::str::from_utf8(&content[offset..offset + count_end])?;
+        let count: usize = count_str.parse().context("Invalid package count")?;
+        offset += count_end + 1;
 
         std::fs::create_dir_all(output_dir)?;
 
         let mut packages = Vec::new();
-        let mut offset = header.len() + 1 + count.to_string().len() + 1;
 
         for _ in 0..count {
-            let metadata_line = lines.next().context("Missing module metadata")?;
-            let parts: Vec<&str> = metadata_line.split('|').collect();
+            // Read metadata line (text)
+            let metadata_end = content[offset..]
+                .iter()
+                .position(|&b| b == b'\n')
+                .context("Missing module metadata")?;
+            let metadata = std::str::from_utf8(&content[offset..offset + metadata_end])?;
+            let parts: Vec<&str> = metadata.split('|').collect();
 
             if parts.len() != 2 {
                 anyhow::bail!("Invalid module metadata format");
@@ -89,10 +99,12 @@ impl SkinMerger {
 
             let module_name = parts[0];
             let size: usize = parts[1].parse().context("Invalid module size")?;
+            offset += metadata_end + 1;
 
-            offset += metadata_line.len() + 1;
-
-            // Extract APK data
+            // Extract APK data (binary)
+            if offset + size > content.len() {
+                anyhow::bail!("Invalid APK data size");
+            }
             let apk_data = &content[offset..offset + size];
             let apk_path = output_dir.join(format!("{}.apk", module_name));
 

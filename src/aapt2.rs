@@ -160,9 +160,14 @@ impl Aapt2 {
             anyhow::bail!("Failed to compile {}: {}", resource_file.display(), stderr);
         }
 
-        // The output flat file name
-        let flat_name = format!("{}.flat", resource_file.display());
-        let flat_path = output_dir.join(Path::new(&flat_name).file_name().unwrap());
+        // The output flat file name - aapt2 uses just the filename, not full path
+        let file_name = resource_file
+            .file_name()
+            .context("Invalid resource file name")?
+            .to_str()
+            .context("Non-UTF8 file name")?;
+        let flat_name = format!("{}.flat", file_name);
+        let flat_path = output_dir.join(&flat_name);
 
         Ok(flat_path)
     }

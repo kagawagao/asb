@@ -223,7 +223,14 @@ impl Cli {
                 resource_dir: resource_dir.unwrap(),
                 manifest_path: manifest.unwrap(),
                 output_dir: output.unwrap(),
-                package_name: package.unwrap_or_else(|| "com.example.skin".to_string()),
+                package_name: package.unwrap_or_else(|| {
+                    println!(
+                        "{}",
+                        "Warning: Using default package name 'com.example.skin'. Specify with --package for production."
+                            .yellow()
+                    );
+                    "com.example.skin".to_string()
+                }),
                 android_jar: android_jar.unwrap(),
                 aar_files: if aar.is_empty() { None } else { Some(aar) },
                 aapt2_path: aapt2,

@@ -165,12 +165,15 @@ impl SkinBuilder {
         let resource_files = self.find_resource_files(res_dir)?;
         debug!("Found {} resource files", resource_files.len());
 
-        // Set number of parallel workers
+        // Set number of parallel workers (note: this only works if not already initialized)
         if let Some(workers) = self.config.parallel_workers {
-            rayon::ThreadPoolBuilder::new()
+            if rayon::ThreadPoolBuilder::new()
                 .num_threads(workers)
                 .build_global()
-                .ok();
+                .is_err()
+            {
+                debug!("Worker thread count already set, using existing pool");
+            }
         }
 
         let cache = self.cache.as_mut().unwrap();
