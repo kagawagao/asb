@@ -1,0 +1,42 @@
+{
+  "name": "asb",
+  "version": "1.0.0",
+  "description": "Android Skin Builder - A cross-platform tool for packaging Android resource-only skin packages using aapt2",
+  "main": "dist/index.js",
+  "bin": {
+    "asb": "./bin/asb.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "npm run build",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": [
+    "android",
+    "aapt2",
+    "skin",
+    "resources",
+    "hot-update",
+    "plugin"
+  ],
+  "author": "Jingsong Gao",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "fs-extra": "^11.2.0",
+    "chalk": "^4.1.2",
+    "ora": "^5.4.1",
+    "glob": "^10.3.10",
+    "adm-zip": "^0.5.10"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/fs-extra": "^11.0.4",
+    "@types/adm-zip": "^0.5.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
