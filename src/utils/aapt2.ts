@@ -26,7 +26,8 @@ export class Aapt2Util {
 
     // Check if aapt2 is in PATH
     try {
-      const result = execSync('which aapt2 || where aapt2', {
+      const command = os.platform() === 'win32' ? 'where aapt2' : 'which aapt2';
+      const result = execSync(command, {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'ignore'],
       });

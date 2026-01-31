@@ -43,7 +43,7 @@ export class CacheUtil {
           this.cache = data;
         }
       } catch (e) {
-        // If cache is corrupted, start fresh
+        // If cache cannot be read or parsed (corrupted, invalid JSON, etc.), start fresh
         this.cache = {
           version: '1.0',
           entries: {},

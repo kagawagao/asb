@@ -7,6 +7,7 @@ import ora from 'ora';
 import { SkinBuilder } from './builder';
 import { BuildConfig } from './types';
 import { Aapt2Util } from './utils/aapt2';
+import { CleanUtil } from './utils/clean';
 
 const program = new Command();
 
@@ -120,11 +121,13 @@ program
   .action(async (options) => {
     try {
       let outputDir: string;
+      let cacheDir: string | undefined;
 
       if (options.config) {
         const configPath = path.resolve(options.config);
         const config = await fs.readJson(configPath);
         outputDir = config.outputDir;
+        cacheDir = config.cacheDir;
       } else if (options.output) {
         outputDir = path.resolve(options.output);
       } else {
@@ -132,15 +135,7 @@ program
         process.exit(1);
       }
 
-      const builder = new SkinBuilder({
-        resourceDir: '',
-        manifestPath: '',
-        outputDir,
-        androidJar: '',
-        packageName: '',
-      });
-
-      await builder.clean();
+      await CleanUtil.clean(outputDir, cacheDir);
       console.log(chalk.green('✓ Build artifacts cleaned'));
     } catch (e: any) {
       console.log(chalk.red(`Error: ${e.message}`));

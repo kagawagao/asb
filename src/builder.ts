@@ -5,6 +5,7 @@ import { BuildConfig, CompileResult, LinkResult, AarInfo } from './types';
 import { Aapt2Util } from './utils/aapt2';
 import { AarUtil } from './utils/aar';
 import { CacheUtil } from './utils/cache';
+import { CleanUtil } from './utils/clean';
 
 /**
  * Main builder class for Android skin packages
@@ -210,18 +211,6 @@ export class SkinBuilder {
    * Clean build artifacts
    */
   async clean(): Promise<void> {
-    const compiledDir = this.config.compiledDir || path.join(this.config.outputDir, 'compiled');
-    const tempDir = path.join(this.config.outputDir, '.temp');
-    
-    try {
-      await fs.remove(compiledDir);
-      await fs.remove(tempDir);
-      
-      if (this.cacheUtil) {
-        await this.cacheUtil.clear();
-      }
-    } catch (e) {
-      // Ignore cleanup errors
-    }
+    await CleanUtil.clean(this.config.outputDir, this.config.cacheDir);
   }
 }
