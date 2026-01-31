@@ -2,7 +2,8 @@
   "name": "asb",
   "version": "1.0.0",
   "description": "Android Skin Builder - A cross-platform tool for packaging Android resource-only skin packages using aapt2",
-  "main": "dist/index.js",
+  "main": "dist/lib.js",
+  "types": "dist/lib.d.ts",
   "bin": {
     "asb": "./bin/asb.js"
   },
@@ -18,10 +19,21 @@
     "skin",
     "resources",
     "hot-update",
-    "plugin"
+    "plugin",
+    "packaging",
+    "theme",
+    "resource-only"
   ],
   "author": "Jingsong Gao",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kagawagao/asb.git"
+  },
+  "homepage": "https://github.com/kagawagao/asb#readme",
+  "bugs": {
+    "url": "https://github.com/kagawagao/asb/issues"
+  },
   "dependencies": {
     "commander": "^11.1.0",
     "fs-extra": "^11.2.0",
@@ -38,5 +50,13 @@
   },
   "engines": {
     "node": ">=14.0.0"
-  }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
 }
+
