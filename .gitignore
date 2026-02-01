@@ -46,3 +46,6 @@ coverage/
 *.ap_
 *.flat
 
+# Skin packages
+*.skin
+

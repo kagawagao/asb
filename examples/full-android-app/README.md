@@ -92,7 +92,7 @@ cd examples/full-android-app
 
 This will:
 1. Build each module into separate APKs
-2. Merge all modules into a single file: `build/merged-skin.asb`
+2. Merge all modules into a single file: `build/merged-skin.skin`
 
 ### 4. Using the Merged Skin Package
 
@@ -151,7 +151,7 @@ Enable caching for faster subsequent builds:
 {
   "modules": [...],
   "incremental": true,
-  "mergedOutput": "./build/merged-skin.asb"
+  "mergedOutput": "./build/merged-skin.skin"
 }
 ```
 
