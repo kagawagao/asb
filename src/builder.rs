@@ -128,10 +128,10 @@ impl SkinBuilder {
             cache.save()?;
         }
 
-        // Link resources into APK
+        // Link resources into skin package
         info!("Linking resources...");
         let output_apk = self.config.output_dir.join(format!(
-            "skin-{}.apk",
+            "skin-{}.skin",
             self.config.package_name.replace('.', "_")
         ));
 

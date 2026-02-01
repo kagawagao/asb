@@ -40,4 +40,4 @@ When this skin package is loaded by your app, it will automatically use:
 
 ## Output
 
-The built skin package will be in `build/skin-com.example.skin.multitheme.apk`
+The built skin package will be in `build/skin-com_example_skin_multitheme.skin`

@@ -86,10 +86,10 @@ cd full-android-app
 ../../target/release/asb build-multi --config asb.multi-module.json
 
 # This creates:
-# - build/app/app.apk
-# - build/feature-home/feature-home.apk
-# - build/feature-profile/feature-profile.apk
-# - build/feature-settings/feature-settings.apk
+# - build/app/app.skin
+# - build/feature-home/feature-home.skin
+# - build/feature-profile/feature-profile.skin
+# - build/feature-settings/feature-settings.skin
 # - build/merged-skin.asb (all modules merged)
 ```
 

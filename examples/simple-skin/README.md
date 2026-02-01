@@ -26,4 +26,4 @@ simple-skin/
 
 ## Output
 
-The built skin package will be in `build/skin-com.example.skin.simple.apk`
+The built skin package will be in `build/skin-com_example_skin_simple.skin`

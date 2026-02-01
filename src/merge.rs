@@ -46,14 +46,14 @@ impl SkinMerger {
         for package in packages {
             let mut apk_data = Vec::new();
             let mut file = File::open(&package.apk_path)
-                .with_context(|| format!("Failed to open APK: {}", package.apk_path.display()))?;
+                .with_context(|| format!("Failed to open skin package: {}", package.apk_path.display()))?;
             file.read_to_end(&mut apk_data)?;
 
             // Write module metadata
             let metadata = format!("{}|{}\n", package.module_name, apk_data.len());
             merged_data.extend_from_slice(metadata.as_bytes());
 
-            // Write APK data
+            // Write skin package data
             merged_data.extend_from_slice(&apk_data);
         }
 
@@ -114,12 +114,12 @@ impl SkinMerger {
             let size: usize = parts[1].parse().context("Invalid module size")?;
             offset += metadata_end + 1;
 
-            // Extract APK data (binary)
+            // Extract skin package data (binary)
             if offset + size > content.len() {
-                anyhow::bail!("Invalid APK data size");
+                anyhow::bail!("Invalid skin package data size");
             }
             let apk_data = &content[offset..offset + size];
-            let apk_path = output_dir.join(format!("{}.apk", module_name));
+            let apk_path = output_dir.join(format!("{}.skin", module_name));
 
             let mut apk_file = File::create(&apk_path)?;
             apk_file.write_all(apk_data)?;
