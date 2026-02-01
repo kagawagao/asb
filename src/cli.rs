@@ -217,14 +217,17 @@ impl Cli {
 
         println!("{}", "\nBuilding skin package...\n".blue().bold());
 
+        let start_time = std::time::Instant::now();
         let mut builder = SkinBuilder::new(build_config)?;
         let result = builder.build().await?;
+        let elapsed = start_time.elapsed();
 
         if result.success {
             println!("{}", "\n✓ Skin package built successfully!".green().bold());
             if let Some(apk_path) = result.apk_path {
                 println!("  {}: {}", "Output".cyan(), apk_path.display());
             }
+            println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
         } else {
             println!("{}", "\n✗ Build failed:".red().bold());
             for error in &result.errors {
@@ -247,6 +250,7 @@ impl Cli {
                 .bold()
         );
 
+        let start_time = std::time::Instant::now();
         let mut packages = Vec::new();
 
         for module_config in &multi_config.modules {
@@ -279,6 +283,8 @@ impl Cli {
         // Merge packages
         println!("\n{}", "Merging module packages...".blue().bold());
         SkinMerger::merge_packages(&packages, &multi_config.merged_output)?;
+        
+        let elapsed = start_time.elapsed();
 
         println!("{}", "\n✓ Multi-module build completed!".green().bold());
         println!(
@@ -286,6 +292,7 @@ impl Cli {
             "Merged output".cyan(),
             multi_config.merged_output.display()
         );
+        println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
 
         Ok(())
     }
