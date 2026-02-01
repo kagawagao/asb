@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Profile Feature Colors -->
+    <color name="profile_primary">#E91E63</color>
+    <color name="profile_accent">#F06292</color>
+    <color name="profile_background">#FCE4EC</color>
+    <color name="profile_card">#FFFFFF</color>
+    <color name="profile_text">#212121</color>
+    <color name="profile_text_secondary">#757575</color>
+    <color name="profile_divider">#E0E0E0</color>
+</resources>

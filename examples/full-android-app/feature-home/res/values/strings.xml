@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home Feature Strings -->
+    <string name="home_title">Home</string>
+    <string name="home_welcome">Welcome back!</string>
+    <string name="home_recent_items">Recent Items</string>
+    <string name="home_quick_actions">Quick Actions</string>
+    <string name="home_no_items">No items to display</string>
+    <string name="home_refresh">Refresh</string>
+</resources>

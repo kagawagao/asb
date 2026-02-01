@@ -1,0 +1,50 @@
+{
+  "modules": [
+    {
+      "name": "app",
+      "resourceDir": "./app/res",
+      "manifestPath": "./app/AndroidManifest.xml",
+      "outputDir": "./build/app",
+      "packageName": "com.example.skinapp.app",
+      "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
+      "incremental": true,
+      "versionCode": 1,
+      "versionName": "1.0.0"
+    },
+    {
+      "name": "feature-home",
+      "resourceDir": "./feature-home/res",
+      "manifestPath": "./feature-home/AndroidManifest.xml",
+      "outputDir": "./build/feature-home",
+      "packageName": "com.example.skinapp.home",
+      "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
+      "incremental": true,
+      "versionCode": 1,
+      "versionName": "1.0.0"
+    },
+    {
+      "name": "feature-profile",
+      "resourceDir": "./feature-profile/res",
+      "manifestPath": "./feature-profile/AndroidManifest.xml",
+      "outputDir": "./build/feature-profile",
+      "packageName": "com.example.skinapp.profile",
+      "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
+      "incremental": true,
+      "versionCode": 1,
+      "versionName": "1.0.0"
+    },
+    {
+      "name": "feature-settings",
+      "resourceDir": "./feature-settings/res",
+      "manifestPath": "./feature-settings/AndroidManifest.xml",
+      "outputDir": "./build/feature-settings",
+      "packageName": "com.example.skinapp.settings",
+      "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
+      "incremental": true,
+      "versionCode": 1,
+      "versionName": "1.0.0"
+    }
+  ],
+  "mergedOutput": "./build/merged-skin.asb",
+  "parallelWorkers": 8
+}
