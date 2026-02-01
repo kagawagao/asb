@@ -5,14 +5,12 @@ This example demonstrates a basic skin package with colors and strings.
 ## Build
 
 ```bash
-# Install dependencies first
-cd ../../
-npm install
-
 # Build the example
 cd examples/simple-skin
-node ../../bin/asb.js build --config asb.config.json
+asb build --config asb.config.json
 ```
+
+**Note:** Make sure you have built the Rust binary first with `cargo build --release` from the root directory, and that `asb` is in your PATH or use `../../target/release/asb` instead.
 
 ## Structure
 

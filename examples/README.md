@@ -28,23 +28,24 @@ An advanced example demonstrating day/night theme support with multiple resource
 
 ## Building Examples
 
-Each example can be built independently:
+First, build the Rust binary from the root directory:
+
+```bash
+# From the root directory
+cargo build --release
+```
+
+Then each example can be built independently:
 
 ```bash
 # Navigate to the example directory
 cd simple-skin
 
-# Build the skin package
-node ../../bin/asb.js build --config asb.config.json
-```
+# Build the skin package (assuming asb is in PATH)
+asb build --config asb.config.json
 
-Or use npm scripts from the root:
-
-```bash
-# From the root directory
-npm install
-cd examples/simple-skin
-node ../../bin/asb.js build --config asb.config.json
+# Or use the binary directly
+../../target/release/asb build --config asb.config.json
 ```
 
 ## Creating Your Own Skin
