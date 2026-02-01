@@ -179,34 +179,52 @@ impl SkinBuilder {
         let cache = self.cache.as_mut().unwrap();
         let aapt2 = &self.aapt2;
 
-        // Process files in parallel
-        let results: Vec<_> = resource_files
+        // First, determine serially which files need recompilation and which can use cache
+        let mut to_compile: Vec<PathBuf> = Vec::new();
+        let mut cached_results: Vec<(PathBuf, PathBuf)> = Vec::new();
+
+        for resource_file in &resource_files {
+            if cache.needs_recompile(resource_file).unwrap_or(true) {
+                // Need to recompile
+                to_compile.push(resource_file.clone());
+            } else {
+                // Use cached flat file if available
+                debug!("Using cached: {}", resource_file.display());
+                if let Some(flat) = cache.get_cached_flat_file(resource_file) {
+                    cached_results.push((resource_file.clone(), flat));
+                }
+            }
+        }
+
+        // Process recompilations in parallel, without touching the cache
+        let compiled_results: Vec<_> = to_compile
             .par_iter()
             .map(|resource_file| {
-                if cache.needs_recompile(resource_file).unwrap_or(true) {
-                    // Need to recompile
-                    debug!("Recompiling: {}", resource_file.display());
-                    match aapt2.compile_dir(
-                        resource_file.parent().unwrap(),
-                        compiled_dir,
-                    ) {
-                        Ok(result) if result.success && !result.flat_files.is_empty() => {
-                            Some((resource_file.clone(), result.flat_files[0].clone()))
-                        }
-                        _ => None,
+                debug!("Recompiling: {}", resource_file.display());
+                match aapt2.compile_dir(
+                    resource_file.parent().unwrap(),
+                    compiled_dir,
+                ) {
+                    Ok(result) if result.success && !result.flat_files.is_empty() => {
+                        Some((resource_file.clone(), result.flat_files[0].clone()))
                     }
-                } else {
-                    // Use cached flat file
-                    debug!("Using cached: {}", resource_file.display());
-                    cache
-                        .get_cached_flat_file(resource_file)
-                        .map(|flat| (resource_file.clone(), flat))
+                    _ => None,
                 }
             })
             .collect();
 
         let mut flat_files = Vec::new();
-        for result in results {
+
+        // First, handle cached results
+        for (resource_file, flat_file) in cached_results {
+            cache.update_entry(&resource_file, &flat_file)?;
+            if flat_file.exists() {
+                flat_files.push(flat_file);
+            }
+        }
+
+        // Then, handle newly compiled results
+        for result in compiled_results {
             if let Some((resource_file, flat_file)) = result {
                 cache.update_entry(&resource_file, &flat_file)?;
                 if flat_file.exists() {

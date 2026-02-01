@@ -22,6 +22,19 @@ impl SkinMerger {
     ) -> Result<()> {
         info!("Merging {} module packages...", packages.len());
 
+        // Validate module names to prevent injection attacks
+        for package in packages {
+            if package.module_name.contains('\n')
+                || package.module_name.contains('|')
+                || package.module_name.contains('\r')
+            {
+                anyhow::bail!(
+                    "Invalid module name '{}': cannot contain newline or pipe characters",
+                    package.module_name
+                );
+            }
+        }
+
         // Create a merged structure
         let mut merged_data = Vec::new();
 
