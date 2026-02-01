@@ -244,7 +244,6 @@ impl SkinBuilder {
         for (i, resource_file) in to_compile.iter().enumerate() {
             if i < flat_files_results.flat_files.len() {
                 let flat_file = &flat_files_results.flat_files[i];
-                debug!("Adding newly compiled: {} -> {}", resource_file.display(), flat_file.display());
                 cache.update_entry(resource_file, flat_file)?;
                 if flat_file.exists() {
                     flat_files.push(flat_file.clone());
@@ -254,16 +253,10 @@ impl SkinBuilder {
 
         // Then, handle cached results
         for (resource_file, flat_file) in cached_results {
-            debug!("Adding cached: {} -> {}", resource_file.display(), flat_file.display());
             cache.update_entry(&resource_file, &flat_file)?;
             if flat_file.exists() {
                 flat_files.push(flat_file);
             }
-        }
-
-        debug!("Total flat files to link: {}", flat_files.len());
-        for (i, f) in flat_files.iter().enumerate() {
-            debug!("  [{}] {}", i, f.display());
         }
 
         Ok(flat_files)
