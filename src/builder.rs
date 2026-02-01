@@ -259,6 +259,10 @@ impl SkinBuilder {
             }
         }
 
+        // Deduplicate flat files to avoid passing the same file multiple times to link
+        flat_files.sort();
+        flat_files.dedup();
+
         Ok(flat_files)
     }
 
