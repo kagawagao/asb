@@ -125,7 +125,39 @@ impl Aapt2 {
 
         let results: Vec<_> = resource_files
             .par_iter()
-            .map(|file| self.compile_single_file(file, output_dir))
+            .map(|file| {
+                // For parallel compilation, we can't use before/after file lists
+                // because other threads are also writing files. Instead, we predict
+                // the flat file name based on the resource file path.
+                let output = Command::new(&self.aapt2_path)
+                    .arg("compile")
+                    .arg("-o")
+                    .arg(output_dir)
+                    .arg(file)
+                    .output()
+                    .context("Failed to execute aapt2 compile")?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("Failed to compile {}: {}", file.display(), stderr);
+                }
+
+                // Predict the flat file name based on the resource file path
+                // aapt2 creates names like: values_strings.arsc.flat for res/values/strings.xml
+                if let Some(parent) = file.parent() {
+                    if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+                        if let Some(file_stem) = file.file_stem().and_then(|s| s.to_str()) {
+                            let flat_name = format!("{}_{}.arsc.flat", parent_name, file_stem);
+                            let flat_path = output_dir.join(&flat_name);
+                            if flat_path.exists() {
+                                return Ok(flat_path);
+                            }
+                        }
+                    }
+                }
+                
+                anyhow::bail!("Could not find compiled flat file for {}", file.display())
+            })
             .collect();
 
         let mut flat_files = Vec::new();
