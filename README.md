@@ -45,66 +45,58 @@ sudo cp target/release/asb /usr/local/bin/
 
 ## Quick Start / 快速开始
 
-### 1. 初始化项目
+### Option 1: 使用默认配置（推荐）
+
+ASB 内置了基于标准 Android 项目结构的默认配置，无需配置文件即可直接使用：
 
 ```bash
-asb init
+# 在标准 Android 项目目录中直接运行
+asb build
 ```
 
-This creates a sample configuration file `asb.config.json`:
+默认配置使用以下标准路径：
+- 资源目录: `./src/main/res`
+- Manifest: `./src/main/AndroidManifest.xml`
+- 输出目录: `./build/outputs/skin`
+
+### Option 2: 使用配置文件
+
+#### 方法 A: 当前目录下的 asb.config.json（自动加载）
+
+在项目根目录创建 `asb.config.json`，运行 `asb build` 时会自动使用：
+
+```bash
+# 生成默认配置文件
+asb init
+
+# 编辑 asb.config.json 后直接运行
+asb build
+```
+
+生成的配置文件示例（基于标准 Android 结构）：
 
 ```json
 {
-  "resourceDir": "./res",
-  "manifestPath": "./AndroidManifest.xml",
-  "outputDir": "./build",
+  "resourceDir": "./src/main/res",
+  "manifestPath": "./src/main/AndroidManifest.xml",
+  "outputDir": "./build/outputs/skin",
   "packageName": "com.example.skin",
   "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
-  "aarFiles": [],
   "incremental": true,
   "versionCode": 1,
-  "versionName": "1.0.0",
-  "stableIdsFile": "./stable-ids.txt",
-  "parallelWorkers": null
+  "versionName": "1.0.0"
 }
 ```
 
-### 2. 准备资源文件
-
-创建标准的 Android 资源结构：
-
-```
-project/
-├── res/
-│   ├── values/
-│   │   └── colors.xml
-│   ├── drawable/
-│   │   └── icon.png
-│   └── layout/
-│       └── activity_main.xml
-├── AndroidManifest.xml
-└── asb.config.json
-```
-
-最小化的 `AndroidManifest.xml`:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.skin">
-    <application />
-</manifest>
-```
-
-### 3. 构建皮肤包
-
-使用配置文件：
+#### 方法 B: 指定配置文件路径
 
 ```bash
-asb build --config asb.config.json
+asb build --config custom-config.json
 ```
 
-或直接使用命令行参数：
+### Option 3: 命令行参数（最高优先级）
+
+命令行参数会覆盖配置文件中的设置：
 
 ```bash
 asb build \
@@ -117,6 +109,59 @@ asb build \
   --workers 8
 ```
 
+### 配置优先级
+
+ASB 按以下优先级加载配置：
+
+1. **命令行参数**（最高优先级）- 覆盖所有其他配置
+2. **--config 指定的文件** - 显式指定的配置文件
+3. **./asb.config.json** - 当前目录的配置文件（自动检测）
+4. **内置默认配置**（最低优先级）- 基于标准 Android 项目结构
+
+### 准备资源文件
+
+标准 Android 项目结构（推荐）：
+
+```
+project/
+├── src/
+│   └── main/
+│       ├── res/
+│       │   ├── values/
+│       │   │   └── colors.xml
+│       │   ├── drawable/
+│       │   │   └── icon.png
+│       │   └── layout/
+│       │       └── activity_main.xml
+│       └── AndroidManifest.xml
+└── asb.config.json (可选)
+```
+
+或传统结构：
+
+```
+project/
+├── res/
+│   ├── values/
+│   │   └── colors.xml
+│   ├── drawable/
+│   │   └── icon.png
+│   └── layout/
+│       └── activity_main.xml
+├── AndroidManifest.xml
+└── asb.config.json (可选)
+```
+
+最小化的 `AndroidManifest.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.skin">
+    <application />
+</manifest>
+```
+
 ## Usage / 使用方法
 
 ### Commands / 命令
@@ -126,12 +171,12 @@ asb build \
 构建皮肤包
 
 **Options:**
-- `-c, --config <path>` - 配置文件路径
-- `-r, --resource-dir <path>` - 资源目录路径
-- `-m, --manifest <path>` - AndroidManifest.xml 路径
-- `-o, --output <path>` - 输出目录
-- `-p, --package <name>` - 包名
-- `-a, --android-jar <path>` - android.jar 路径
+- `-c, --config <path>` - 配置文件路径（可选，默认查找 ./asb.config.json）
+- `-r, --resource-dir <path>` - 资源目录路径（覆盖配置文件）
+- `-m, --manifest <path>` - AndroidManifest.xml 路径（覆盖配置文件）
+- `-o, --output <path>` - 输出目录（覆盖配置文件）
+- `-p, --package <name>` - 包名（覆盖配置文件）
+- `-a, --android-jar <path>` - android.jar 路径（覆盖配置文件）
 - `--aar <paths...>` - AAR 文件路径（可多个）
 - `--aapt2 <path>` - aapt2 二进制文件路径
 - `--incremental` - 启用增量构建
@@ -140,7 +185,25 @@ asb build \
 - `--stable-ids <path>` - stable IDs 文件路径
 - `--workers <number>` - 并行工作线程数（默认为 CPU 核心数）
 
+**说明:**
+- 所有参数都是可选的
+- 如果不提供 `--config`，工具会自动查找当前目录的 `./asb.config.json`
+- 如果没有找到配置文件，会使用内置的默认配置（基于标准 Android 项目结构）
+- 命令行参数始终优先于配置文件中的设置
+
 **Examples:**
+
+最简单的使用方式（标准 Android 项目）：
+
+```bash
+asb build
+```
+
+使用特定配置文件：
+
+```bash
+asb build --config custom-config.json
+```
 
 并行编译（8 个工作线程）：
 

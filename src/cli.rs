@@ -165,85 +165,55 @@ impl Cli {
         stable_ids: Option<PathBuf>,
         workers: Option<usize>,
     ) -> Result<()> {
-        let build_config = if let Some(config_path) = config_file {
-            let content = std::fs::read_to_string(&config_path)?;
-            let mut config: BuildConfig = serde_json::from_str(&content)?;
+        // Check if using defaults before moving config_file
+        let using_defaults = config_file.is_none() && !PathBuf::from("./asb.config.json").exists();
+        
+        // Load config: explicit file > asb.config.json in current dir > defaults
+        let mut build_config = BuildConfig::load_or_default(config_file)?;
 
-            // Override with CLI arguments
-            if let Some(rd) = resource_dir {
-                config.resource_dir = rd;
-            }
-            if let Some(m) = manifest {
-                config.manifest_path = m;
-            }
-            if let Some(o) = output {
-                config.output_dir = o;
-            }
-            if let Some(p) = package {
-                config.package_name = p;
-            }
-            if let Some(aj) = android_jar {
-                config.android_jar = aj;
-            }
-            if !aar.is_empty() {
-                config.aar_files = Some(aar);
-            }
-            if let Some(a) = aapt2 {
-                config.aapt2_path = Some(a);
-            }
-            if incremental {
-                config.incremental = Some(true);
-            }
-            if let Some(vc) = version_code {
-                config.version_code = Some(vc);
-            }
-            if let Some(vn) = version_name {
-                config.version_name = Some(vn);
-            }
-            if let Some(si) = stable_ids {
-                config.stable_ids_file = Some(si);
-            }
-            if let Some(w) = workers {
-                config.parallel_workers = Some(w);
-            }
+        // Show info message if using defaults
+        if using_defaults {
+            info!("Using default configuration based on standard Android project structure");
+            info!("Create asb.config.json in current directory to customize settings");
+        }
 
-            config
-        } else {
-            // Build from CLI arguments
-            if resource_dir.is_none()
-                || manifest.is_none()
-                || output.is_none()
-                || android_jar.is_none()
-            {
-                error!("Missing required options. Provide either --config or all of --resource-dir, --manifest, --output, and --android-jar");
-                std::process::exit(1);
-            }
-
-            BuildConfig {
-                resource_dir: resource_dir.unwrap(),
-                manifest_path: manifest.unwrap(),
-                output_dir: output.unwrap(),
-                package_name: package.unwrap_or_else(|| {
-                    println!(
-                        "{}",
-                        "Warning: Using default package name 'com.example.skin'. Specify with --package for production."
-                            .yellow()
-                    );
-                    "com.example.skin".to_string()
-                }),
-                android_jar: android_jar.unwrap(),
-                aar_files: if aar.is_empty() { None } else { Some(aar) },
-                aapt2_path: aapt2,
-                incremental: Some(incremental),
-                cache_dir: None,
-                version_code,
-                version_name,
-                additional_resource_dirs: None,
-                compiled_dir: None,
-                stable_ids_file: stable_ids,
-                parallel_workers: workers,
-            }
-        };
+        // Override config with CLI arguments (CLI args have highest priority)
+        if let Some(rd) = resource_dir {
+            build_config.resource_dir = rd;
+        }
+        if let Some(m) = manifest {
+            build_config.manifest_path = m;
+        }
+        if let Some(o) = output {
+            build_config.output_dir = o;
+        }
+        if let Some(p) = package {
+            build_config.package_name = p;
+        }
+        if let Some(aj) = android_jar {
+            build_config.android_jar = aj;
+        }
+        if !aar.is_empty() {
+            build_config.aar_files = Some(aar);
+        }
+        if let Some(a) = aapt2 {
+            build_config.aapt2_path = Some(a);
+        }
+        if incremental {
+            build_config.incremental = Some(true);
+        }
+        if let Some(vc) = version_code {
+            build_config.version_code = Some(vc);
+        }
+        if let Some(vn) = version_name {
+            build_config.version_name = Some(vn);
+        }
+        if let Some(si) = stable_ids {
+            build_config.stable_ids_file = Some(si);
+        }
+        if let Some(w) = workers {
+            build_config.parallel_workers = Some(w);
+        }
 
         println!("{}", "\nBuilding skin package...\n".blue().bold());
 
@@ -362,23 +332,8 @@ impl Cli {
             return Ok(());
         }
 
-        let sample_config = BuildConfig {
-            resource_dir: PathBuf::from("./res"),
-            manifest_path: PathBuf::from("./AndroidManifest.xml"),
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.skin".to_string(),
-            android_jar: PathBuf::from("${ANDROID_HOME}/platforms/android-30/android.jar"),
-            aar_files: Some(vec![]),
-            aapt2_path: None,
-            incremental: Some(true),
-            cache_dir: None,
-            version_code: Some(1),
-            version_name: Some("1.0.0".to_string()),
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: Some(PathBuf::from("./stable-ids.txt")),
-            parallel_workers: None,
-        };
+        // Use default config which follows standard Android structure
+        let sample_config = BuildConfig::default_config();
 
         let content = serde_json::to_string_pretty(&sample_config)?;
         std::fs::write(&config_path, content)?;
@@ -387,8 +342,13 @@ impl Cli {
             "{}",
             format!("✓ Configuration file created: {}", config_path.display()).green()
         );
+        println!("\n{}", "Default configuration uses standard Android project structure:".cyan());
+        println!("  {}: src/main/res/", "Resources".white());
+        println!("  {}: src/main/AndroidManifest.xml", "Manifest".white());
+        println!("  {}: build/outputs/skin/", "Output".white());
         println!("\n{}", "Edit the configuration file and run:".cyan());
-        println!("  {}", "asb build --config asb.config.json".white());
+        println!("  {}", "asb build".white());
+        println!("\n{}", "Or simply run 'asb build' without config (uses defaults or ./asb.config.json if exists)".cyan());
 
         Ok(())
     }

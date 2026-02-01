@@ -69,6 +69,56 @@ pub struct BuildConfig {
     pub parallel_workers: Option<usize>,
 }
 
+impl BuildConfig {
+    /// Create default configuration based on standard Android project structure
+    pub fn default_config() -> Self {
+        // Try to find ANDROID_HOME for android.jar
+        let android_jar = if let Ok(android_home) = std::env::var("ANDROID_HOME") {
+            PathBuf::from(android_home).join("platforms/android-30/android.jar")
+        } else {
+            PathBuf::from("${ANDROID_HOME}/platforms/android-30/android.jar")
+        };
+
+        Self {
+            resource_dir: PathBuf::from("./src/main/res"),
+            manifest_path: PathBuf::from("./src/main/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build/outputs/skin"),
+            package_name: "com.example.skin".to_string(),
+            android_jar,
+            aar_files: None,
+            aapt2_path: None,
+            incremental: Some(true),
+            cache_dir: None,
+            version_code: Some(1),
+            version_name: Some("1.0.0".to_string()),
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        }
+    }
+
+    /// Load configuration from file or use defaults
+    /// Priority: explicit config file > asb.config.json in current dir > built-in defaults
+    pub fn load_or_default(config_file: Option<PathBuf>) -> anyhow::Result<Self> {
+        // If explicit config file is provided, use it
+        if let Some(config_path) = config_file {
+            let content = std::fs::read_to_string(&config_path)?;
+            return Ok(serde_json::from_str(&content)?);
+        }
+
+        // Check for asb.config.json in current directory
+        let default_config_path = PathBuf::from("./asb.config.json");
+        if default_config_path.exists() {
+            let content = std::fs::read_to_string(&default_config_path)?;
+            return Ok(serde_json::from_str(&content)?);
+        }
+
+        // Use built-in defaults
+        Ok(Self::default_config())
+    }
+}
+
 /// Multi-module configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiModuleConfig {
