@@ -74,9 +74,9 @@ impl BuildConfig {
     pub fn default_config() -> Self {
         // Try to find ANDROID_HOME for android.jar
         let android_jar = if let Ok(android_home) = std::env::var("ANDROID_HOME") {
-            PathBuf::from(android_home).join("platforms/android-30/android.jar")
+            PathBuf::from(android_home).join("platforms/android-34/android.jar")
         } else {
-            PathBuf::from("${ANDROID_HOME}/platforms/android-30/android.jar")
+            PathBuf::from("${ANDROID_HOME}/platforms/android-34/android.jar")
         };
 
         Self {
@@ -98,20 +98,89 @@ impl BuildConfig {
         }
     }
 
+    /// Expand environment variables in path strings
+    fn expand_env_vars(path: &str) -> String {
+        let mut result = path.to_string();
+        
+        // Find all ${VAR} patterns and replace them
+        while let Some(start) = result.find("${") {
+            if let Some(end) = result[start..].find('}') {
+                let end = start + end;
+                let var_name = &result[start + 2..end];
+                
+                if let Ok(value) = std::env::var(var_name) {
+                    result.replace_range(start..=end, &value);
+                } else {
+                    // If variable is not set, leave it as is
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        result
+    }
+
+    /// Expand environment variables in all path fields
+    fn expand_paths(&mut self) {
+        // Expand environment variables in paths
+        self.resource_dir = PathBuf::from(Self::expand_env_vars(&self.resource_dir.to_string_lossy()));
+        self.manifest_path = PathBuf::from(Self::expand_env_vars(&self.manifest_path.to_string_lossy()));
+        self.output_dir = PathBuf::from(Self::expand_env_vars(&self.output_dir.to_string_lossy()));
+        self.android_jar = PathBuf::from(Self::expand_env_vars(&self.android_jar.to_string_lossy()));
+        
+        if let Some(aapt2) = &self.aapt2_path {
+            self.aapt2_path = Some(PathBuf::from(Self::expand_env_vars(&aapt2.to_string_lossy())));
+        }
+        
+        if let Some(cache) = &self.cache_dir {
+            self.cache_dir = Some(PathBuf::from(Self::expand_env_vars(&cache.to_string_lossy())));
+        }
+        
+        if let Some(compiled) = &self.compiled_dir {
+            self.compiled_dir = Some(PathBuf::from(Self::expand_env_vars(&compiled.to_string_lossy())));
+        }
+        
+        if let Some(stable) = &self.stable_ids_file {
+            self.stable_ids_file = Some(PathBuf::from(Self::expand_env_vars(&stable.to_string_lossy())));
+        }
+        
+        if let Some(aars) = &self.aar_files {
+            self.aar_files = Some(
+                aars.iter()
+                    .map(|p| PathBuf::from(Self::expand_env_vars(&p.to_string_lossy())))
+                    .collect()
+            );
+        }
+        
+        if let Some(additional) = &self.additional_resource_dirs {
+            self.additional_resource_dirs = Some(
+                additional.iter()
+                    .map(|p| PathBuf::from(Self::expand_env_vars(&p.to_string_lossy())))
+                    .collect()
+            );
+        }
+    }
+
     /// Load configuration from file or use defaults
     /// Priority: explicit config file > asb.config.json in current dir > built-in defaults
     pub fn load_or_default(config_file: Option<PathBuf>) -> anyhow::Result<Self> {
         // If explicit config file is provided, use it
         if let Some(config_path) = config_file {
             let content = std::fs::read_to_string(&config_path)?;
-            return Ok(serde_json::from_str(&content)?);
+            let mut config: Self = serde_json::from_str(&content)?;
+            config.expand_paths();
+            return Ok(config);
         }
 
         // Check for asb.config.json in current directory
         let default_config_path = PathBuf::from("./asb.config.json");
         if default_config_path.exists() {
             let content = std::fs::read_to_string(&default_config_path)?;
-            return Ok(serde_json::from_str(&content)?);
+            let mut config: Self = serde_json::from_str(&content)?;
+            config.expand_paths();
+            return Ok(config);
         }
 
         // Use built-in defaults

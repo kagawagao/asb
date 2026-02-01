@@ -7,7 +7,7 @@ use walkdir::WalkDir;
 use crate::aapt2::Aapt2;
 use crate::aar::AarExtractor;
 use crate::cache::BuildCache;
-use crate::types::{AarInfo, BuildConfig, BuildResult};
+use crate::types::{AarInfo, BuildConfig, BuildResult, CompileResult};
 
 /// Main builder for Android skin packages
 pub struct SkinBuilder {
@@ -82,6 +82,7 @@ impl SkinBuilder {
         // Compile resources
         info!("Compiling resources from {} directories...", resource_dirs.len());
         let mut flat_files = Vec::new();
+        let mut missing_dirs = Vec::new();
 
         for res_dir in &resource_dirs {
             if res_dir.exists() {
@@ -89,15 +90,34 @@ impl SkinBuilder {
                 flat_files.extend(result);
             } else {
                 info!("Resource directory not found: {}", res_dir.display());
+                missing_dirs.push(res_dir.display().to_string());
             }
         }
 
         if flat_files.is_empty() {
             AarExtractor::cleanup_aars(&aar_infos)?;
+            
+            // Provide helpful error message
+            let mut error_msg = String::from("No resources found to compile.\n\n");
+            
+            if !missing_dirs.is_empty() {
+                error_msg.push_str("The following resource directories do not exist:\n");
+                for dir in &missing_dirs {
+                    error_msg.push_str(&format!("  - {}\n", dir));
+                }
+                error_msg.push_str("\n");
+            }
+            
+            error_msg.push_str("Possible solutions:\n");
+            error_msg.push_str("  1. Make sure you're running 'asb build' from your Android project root directory\n");
+            error_msg.push_str("  2. Create a config file with: asb init\n");
+            error_msg.push_str("  3. Specify custom paths with: asb build --resource-dir <path> --manifest <path> --android-jar <path>\n");
+            error_msg.push_str("  4. Check that your resource directory contains valid Android resources\n");
+            
             return Ok(BuildResult {
                 success: false,
                 apk_path: None,
-                errors: vec!["No resources to compile".to_string()],
+                errors: vec![error_msg],
             });
         }
 
@@ -196,40 +216,40 @@ impl SkinBuilder {
             }
         }
 
-        // Process recompilations in parallel, without touching the cache
-        let compiled_results: Vec<_> = to_compile
-            .par_iter()
-            .map(|resource_file| {
-                debug!("Recompiling: {}", resource_file.display());
-                match aapt2.compile_dir(
-                    resource_file.parent().unwrap(),
-                    compiled_dir,
-                ) {
-                    Ok(result) if result.success && !result.flat_files.is_empty() => {
-                        Some((resource_file.clone(), result.flat_files[0].clone()))
-                    }
-                    _ => None,
-                }
-            })
-            .collect();
+        // Process recompilations in parallel
+        let flat_files_results = if !to_compile.is_empty() {
+            debug!("Recompiling {} files...", to_compile.len());
+            aapt2.compile_files_parallel(&to_compile, compiled_dir)?
+        } else {
+            CompileResult {
+                success: true,
+                flat_files: vec![],
+                errors: vec![],
+            }
+        };
+
+        if !flat_files_results.success {
+            anyhow::bail!("Parallel compilation failed: {:?}", flat_files_results.errors);
+        }
 
         let mut flat_files = Vec::new();
 
-        // First, handle cached results
+        // First, handle newly compiled results
+        for (i, resource_file) in to_compile.iter().enumerate() {
+            if i < flat_files_results.flat_files.len() {
+                let flat_file = &flat_files_results.flat_files[i];
+                cache.update_entry(resource_file, flat_file)?;
+                if flat_file.exists() {
+                    flat_files.push(flat_file.clone());
+                }
+            }
+        }
+
+        // Then, handle cached results
         for (resource_file, flat_file) in cached_results {
             cache.update_entry(&resource_file, &flat_file)?;
             if flat_file.exists() {
                 flat_files.push(flat_file);
-            }
-        }
-
-        // Then, handle newly compiled results
-        for result in compiled_results {
-            if let Some((resource_file, flat_file)) = result {
-                cache.update_entry(&resource_file, &flat_file)?;
-                if flat_file.exists() {
-                    flat_files.push(flat_file);
-                }
             }
         }
 

@@ -147,6 +147,9 @@ impl Aapt2 {
 
     /// Compile a single resource file
     fn compile_single_file(&self, resource_file: &Path, output_dir: &Path) -> Result<PathBuf> {
+        // Get existing flat files before compilation
+        let before_files = Self::collect_flat_files(output_dir)?;
+        
         let output = Command::new(&self.aapt2_path)
             .arg("compile")
             .arg("-o")
@@ -160,16 +163,32 @@ impl Aapt2 {
             anyhow::bail!("Failed to compile {}: {}", resource_file.display(), stderr);
         }
 
-        // The output flat file name - aapt2 uses just the filename, not full path
-        let file_name = resource_file
-            .file_name()
-            .context("Invalid resource file name")?
-            .to_str()
-            .context("Non-UTF8 file name")?;
-        let flat_name = format!("{}.flat", file_name);
-        let flat_path = output_dir.join(&flat_name);
-
-        Ok(flat_path)
+        // Get flat files after compilation - the new one is our result
+        let after_files = Self::collect_flat_files(output_dir)?;
+        
+        // Find the newly created flat file
+        for file in &after_files {
+            if !before_files.contains(file) {
+                return Ok(file.clone());
+            }
+        }
+        
+        // If we didn't find a new file, it might have been overwritten
+        // In that case, try to guess the name based on the resource file path
+        // aapt2 creates names like: values_strings.arsc.flat for res/values/strings.xml
+        if let Some(parent) = resource_file.parent() {
+            if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+                if let Some(file_stem) = resource_file.file_stem().and_then(|s| s.to_str()) {
+                    let flat_name = format!("{}_{}.arsc.flat", parent_name, file_stem);
+                    let flat_path = output_dir.join(&flat_name);
+                    if flat_path.exists() {
+                        return Ok(flat_path);
+                    }
+                }
+            }
+        }
+        
+        anyhow::bail!("Could not find compiled flat file for {}", resource_file.display())
     }
 
     /// Link compiled resources into an APK
