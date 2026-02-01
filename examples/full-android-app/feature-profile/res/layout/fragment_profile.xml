@@ -158,6 +158,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/profile_logout"
-            android:backgroundTint="@color/error" />
+            android:backgroundTint="@color/profile_accent" />
     </LinearLayout>
 </ScrollView>

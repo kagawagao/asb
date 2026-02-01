@@ -253,7 +253,11 @@ impl Cli {
             info!("Building module: {}", module_config.name);
             println!("\n{}", format!("Module: {}", module_config.name).cyan());
 
-            let mut builder = SkinBuilder::new(module_config.config.clone())?;
+            // Clone and expand environment variables in the config
+            let mut config = module_config.config.clone();
+            config.expand_paths();
+            
+            let mut builder = SkinBuilder::new(config)?;
             let result = builder.build().await?;
 
             if !result.success {

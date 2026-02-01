@@ -143,14 +143,27 @@ impl Aapt2 {
                 }
 
                 // Predict the flat file name based on the resource file path
-                // aapt2 creates names like: values_strings.arsc.flat for res/values/strings.xml
+                // aapt2 creates names like:
+                //   - values_strings.arsc.flat for res/values/strings.xml
+                //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
                 if let Some(parent) = file.parent() {
                     if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
-                        if let Some(file_stem) = file.file_stem().and_then(|s| s.to_str()) {
-                            let flat_name = format!("{}_{}.arsc.flat", parent_name, file_stem);
-                            let flat_path = output_dir.join(&flat_name);
-                            if flat_path.exists() {
-                                return Ok(flat_path);
+                        if let Some(file_name) = file.file_name().and_then(|n| n.to_str()) {
+                            // Try different naming patterns based on resource type
+                            let possible_names = if parent_name.starts_with("values") {
+                                // For values resources: values_strings.arsc.flat
+                                vec![format!("{}_{}.arsc.flat", parent_name,
+                                    file.file_stem().and_then(|s| s.to_str()).unwrap_or(""))]
+                            } else {
+                                // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
+                                vec![format!("{}_{}.flat", parent_name, file_name)]
+                            };
+                            
+                            for flat_name in possible_names {
+                                let flat_path = output_dir.join(&flat_name);
+                                if flat_path.exists() {
+                                    return Ok(flat_path);
+                                }
                             }
                         }
                     }
@@ -207,14 +220,27 @@ impl Aapt2 {
         
         // If we didn't find a new file, it might have been overwritten
         // In that case, try to guess the name based on the resource file path
-        // aapt2 creates names like: values_strings.arsc.flat for res/values/strings.xml
+        // aapt2 creates names like: 
+        //   - values_strings.arsc.flat for res/values/strings.xml
+        //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
         if let Some(parent) = resource_file.parent() {
             if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
-                if let Some(file_stem) = resource_file.file_stem().and_then(|s| s.to_str()) {
-                    let flat_name = format!("{}_{}.arsc.flat", parent_name, file_stem);
-                    let flat_path = output_dir.join(&flat_name);
-                    if flat_path.exists() {
-                        return Ok(flat_path);
+                if let Some(file_name) = resource_file.file_name().and_then(|n| n.to_str()) {
+                    // Try different naming patterns based on resource type
+                    let possible_names = if parent_name.starts_with("values") {
+                        // For values resources: values_strings.arsc.flat
+                        vec![format!("{}_{}.arsc.flat", parent_name, 
+                            resource_file.file_stem().and_then(|s| s.to_str()).unwrap_or(""))]
+                    } else {
+                        // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
+                        vec![format!("{}_{}.flat", parent_name, file_name)]
+                    };
+                    
+                    for flat_name in possible_names {
+                        let flat_path = output_dir.join(&flat_name);
+                        if flat_path.exists() {
+                            return Ok(flat_path);
+                        }
                     }
                 }
             }

@@ -123,7 +123,7 @@ impl BuildConfig {
     }
 
     /// Expand environment variables in all path fields
-    fn expand_paths(&mut self) {
+    pub fn expand_paths(&mut self) {
         // Expand environment variables in paths
         self.resource_dir = PathBuf::from(Self::expand_env_vars(&self.resource_dir.to_string_lossy()));
         self.manifest_path = PathBuf::from(Self::expand_env_vars(&self.manifest_path.to_string_lossy()));
