@@ -230,6 +230,18 @@ impl Cli {
             }
         }
 
+        // For array mode with multiple configs, ensure each config has a unique compiled directory
+        // to avoid conflicts when building multiple packages from the same output directory
+        if build_configs.len() > 1 {
+            for (idx, build_config) in build_configs.iter_mut().enumerate() {
+                // Only set if not explicitly configured
+                if build_config.compiled_dir.is_none() {
+                    let unique_compiled_dir = build_config.output_dir.join(format!("compiled_{}", idx));
+                    build_config.compiled_dir = Some(unique_compiled_dir);
+                }
+            }
+        }
+
         if build_configs.len() == 1 {
             // Single configuration mode - keep backward compatibility
             println!("{}", "\nBuilding skin package...\n".blue().bold());
