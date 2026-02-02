@@ -366,18 +366,6 @@ asb (Rust)
 - **Serde**: JSON 序列化
 - **Clap**: 命令行解析
 
-## Comparison with TypeScript Version / 与 TypeScript 版本对比
-
-| Feature | TypeScript | Rust |
-|---------|------------|------|
-| 性能 | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
-| 内存占用 | 高 | 低 |
-| 并发支持 | Worker threads | Native threads (Rayon) |
-| 启动速度 | 慢 (Node.js) | 快 (native binary) |
-| 二进制大小 | 大 (Node.js + deps) | 小 (single binary) |
-| Stable IDs | ❌ | ✅ |
-| 编译期错误检查 | 有限 | 完整 |
-
 ## Troubleshooting / 故障排除
 
 ### aapt2 not found
