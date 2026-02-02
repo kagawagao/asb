@@ -1,6 +1,54 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Flavor-specific configuration for multi-flavor builds
+/// Each flavor can override app-level configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlavorConfig {
+    /// Flavor name (required)
+    pub name: String,
+
+    /// Flavor-specific base directory override (optional)
+    #[serde(rename = "baseDir", skip_serializing_if = "Option::is_none")]
+    pub base_dir: Option<PathBuf>,
+
+    /// Flavor-specific resource directory override (optional)
+    #[serde(rename = "resourceDir", skip_serializing_if = "Option::is_none")]
+    pub resource_dir: Option<PathBuf>,
+
+    /// Flavor-specific manifest path override (optional)
+    #[serde(rename = "manifestPath", skip_serializing_if = "Option::is_none")]
+    pub manifest_path: Option<PathBuf>,
+
+    /// Flavor-specific package name override (optional)
+    #[serde(rename = "packageName", skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+
+    /// Flavor-specific additional resource directories (optional)
+    #[serde(
+        rename = "additionalResourceDirs",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub additional_resource_dirs: Option<Vec<PathBuf>>,
+
+    /// Flavor-specific output directory override (optional)
+    #[serde(rename = "outputDir", skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<PathBuf>,
+
+    /// Flavor-specific output file name override (optional)
+    #[serde(rename = "outputFile", skip_serializing_if = "Option::is_none")]
+    pub output_file: Option<String>,
+
+    /// Flavor-specific version code override (optional)
+    #[serde(rename = "versionCode", skip_serializing_if = "Option::is_none")]
+    pub version_code: Option<u32>,
+
+    /// Flavor-specific version name override (optional)
+    #[serde(rename = "versionName", skip_serializing_if = "Option::is_none")]
+    pub version_name: Option<String>,
+}
+
 /// App-specific configuration in multi-app mode
 /// Contains only app-specific fields, common fields are inherited from parent
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +95,11 @@ pub struct AppConfig {
     /// App-specific version name override (optional)
     #[serde(rename = "versionName", skip_serializing_if = "Option::is_none")]
     pub version_name: Option<String>,
+
+    /// Flavors for this app (optional)
+    /// Each flavor creates a separate build task with potentially different configuration
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub flavors: Option<Vec<FlavorConfig>>,
 }
 
 /// Multi-app configuration wrapper
@@ -109,44 +162,190 @@ pub struct MultiAppConfig {
 
 impl MultiAppConfig {
     /// Convert multi-app config to individual BuildConfig instances
-    /// Merges common fields with app-specific fields
+    /// Merges common fields with app-specific fields and expands flavors
     pub fn into_build_configs(self) -> Vec<BuildConfig> {
-        self.apps
-            .into_iter()
-            .map(|app| {
-                // Determine base_dir: app-specific > common
-                let base_dir = app.base_dir.or_else(|| self.base_dir.clone());
-                
-                // Determine resource_dir with defaults
-                let resource_dir = app.resource_dir.or_else(|| {
-                    base_dir.as_ref().map(|bd| bd.join("res"))
-                }).expect("resourceDir must be specified or derivable from baseDir");
-                
-                // Determine manifest_path with defaults
-                let manifest_path = app.manifest_path.or_else(|| {
-                    base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml"))
-                }).expect("manifestPath must be specified or derivable from baseDir");
-                
-                BuildConfig {
-                    resource_dir,
-                    manifest_path,
-                    output_dir: app.output_dir.unwrap_or_else(|| self.output_dir.clone()),
-                    output_file: app.output_file.or_else(|| self.output_file.clone()),
-                    package_name: app.package_name,
-                    aapt2_path: self.aapt2_path.clone(),
-                    android_jar: self.android_jar.clone(),
-                    aar_files: self.aar_files.clone(),
-                    incremental: self.incremental,
-                    cache_dir: self.cache_dir.clone(),
-                    version_code: app.version_code.or(self.version_code),
-                    version_name: app.version_name.or_else(|| self.version_name.clone()),
-                    additional_resource_dirs: app.additional_resource_dirs,
-                    compiled_dir: None, // Will be set later if needed
-                    stable_ids_file: self.stable_ids_file.clone(),
-                    parallel_workers: self.parallel_workers,
+        let mut result = Vec::new();
+        
+        // Store common config fields that will be shared
+        let common_base_dir = self.base_dir.clone();
+        let common_output_dir = self.output_dir.clone();
+        let common_output_file = self.output_file.clone();
+        let common_android_jar = self.android_jar.clone();
+        let common_aapt2_path = self.aapt2_path.clone();
+        let common_aar_files = self.aar_files.clone();
+        let common_incremental = self.incremental;
+        let common_cache_dir = self.cache_dir.clone();
+        let common_version_code = self.version_code;
+        let common_version_name = self.version_name.clone();
+        let common_stable_ids_file = self.stable_ids_file.clone();
+        let common_parallel_workers = self.parallel_workers;
+        
+        for app in self.apps {
+            // If app has flavors, create a BuildConfig for each flavor
+            if let Some(ref flavors) = app.flavors {
+                for flavor in flavors {
+                    result.push(Self::create_build_config_for_flavor_static(
+                        &app,
+                        &flavor,
+                        &common_base_dir,
+                        &common_output_dir,
+                        &common_output_file,
+                        &common_android_jar,
+                        &common_aapt2_path,
+                        &common_aar_files,
+                        common_incremental,
+                        &common_cache_dir,
+                        common_version_code,
+                        &common_version_name,
+                        &common_stable_ids_file,
+                        common_parallel_workers,
+                    ));
                 }
-            })
-            .collect()
+            } else {
+                // No flavors, create a single BuildConfig
+                result.push(Self::create_build_config_static(
+                    &app,
+                    &common_base_dir,
+                    &common_output_dir,
+                    &common_output_file,
+                    &common_android_jar,
+                    &common_aapt2_path,
+                    &common_aar_files,
+                    common_incremental,
+                    &common_cache_dir,
+                    common_version_code,
+                    &common_version_name,
+                    &common_stable_ids_file,
+                    common_parallel_workers,
+                ));
+            }
+        }
+        
+        result
+    }
+
+    /// Create a BuildConfig from app config without flavor (static version)
+    #[allow(clippy::too_many_arguments)]
+    fn create_build_config_static(
+        app: &AppConfig,
+        common_base_dir: &Option<PathBuf>,
+        common_output_dir: &PathBuf,
+        common_output_file: &Option<String>,
+        common_android_jar: &PathBuf,
+        common_aapt2_path: &Option<PathBuf>,
+        common_aar_files: &Option<Vec<PathBuf>>,
+        common_incremental: Option<bool>,
+        common_cache_dir: &Option<PathBuf>,
+        common_version_code: Option<u32>,
+        common_version_name: &Option<String>,
+        common_stable_ids_file: &Option<PathBuf>,
+        common_parallel_workers: Option<usize>,
+    ) -> BuildConfig {
+        // Determine base_dir: app-specific > common
+        let base_dir = app.base_dir.clone().or_else(|| common_base_dir.clone());
+        
+        // Determine resource_dir with defaults
+        let resource_dir = app.resource_dir.clone().or_else(|| {
+            base_dir.as_ref().map(|bd| bd.join("res"))
+        }).expect("resourceDir must be specified or derivable from baseDir");
+        
+        // Determine manifest_path with defaults
+        let manifest_path = app.manifest_path.clone().or_else(|| {
+            base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml"))
+        }).expect("manifestPath must be specified or derivable from baseDir");
+        
+        BuildConfig {
+            resource_dir,
+            manifest_path,
+            output_dir: app.output_dir.clone().unwrap_or_else(|| common_output_dir.clone()),
+            output_file: app.output_file.clone().or_else(|| common_output_file.clone()),
+            package_name: app.package_name.clone(),
+            aapt2_path: common_aapt2_path.clone(),
+            android_jar: common_android_jar.clone(),
+            aar_files: common_aar_files.clone(),
+            incremental: common_incremental,
+            cache_dir: common_cache_dir.clone(),
+            version_code: app.version_code.or(common_version_code),
+            version_name: app.version_name.clone().or_else(|| common_version_name.clone()),
+            additional_resource_dirs: app.additional_resource_dirs.clone(),
+            compiled_dir: None,
+            stable_ids_file: common_stable_ids_file.clone(),
+            parallel_workers: common_parallel_workers,
+        }
+    }
+
+    /// Create a BuildConfig from app config with a specific flavor (static version)
+    #[allow(clippy::too_many_arguments)]
+    fn create_build_config_for_flavor_static(
+        app: &AppConfig,
+        flavor: &FlavorConfig,
+        common_base_dir: &Option<PathBuf>,
+        common_output_dir: &PathBuf,
+        common_output_file: &Option<String>,
+        common_android_jar: &PathBuf,
+        common_aapt2_path: &Option<PathBuf>,
+        common_aar_files: &Option<Vec<PathBuf>>,
+        common_incremental: Option<bool>,
+        common_cache_dir: &Option<PathBuf>,
+        common_version_code: Option<u32>,
+        common_version_name: &Option<String>,
+        common_stable_ids_file: &Option<PathBuf>,
+        common_parallel_workers: Option<usize>,
+    ) -> BuildConfig {
+        // Determine base_dir: flavor > app > common
+        let base_dir = flavor.base_dir.clone()
+            .or_else(|| app.base_dir.clone())
+            .or_else(|| common_base_dir.clone());
+        
+        // Determine resource_dir: flavor > app > base_dir default
+        let resource_dir = flavor.resource_dir.clone()
+            .or_else(|| app.resource_dir.clone())
+            .or_else(|| base_dir.as_ref().map(|bd| bd.join("res")))
+            .expect("resourceDir must be specified or derivable from baseDir");
+        
+        // Determine manifest_path: flavor > app > base_dir default
+        let manifest_path = flavor.manifest_path.clone()
+            .or_else(|| app.manifest_path.clone())
+            .or_else(|| base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml")))
+            .expect("manifestPath must be specified or derivable from baseDir");
+        
+        // Determine package_name: flavor > app (required at app level)
+        let package_name = flavor.package_name.clone()
+            .unwrap_or_else(|| format!("{}.{}", app.package_name, flavor.name));
+        
+        // Determine output_file: flavor > app > common
+        let output_file = flavor.output_file.clone()
+            .or_else(|| app.output_file.clone())
+            .or_else(|| common_output_file.clone());
+        
+        // Determine additional_resource_dirs: flavor overrides app (not merged)
+        let additional_resource_dirs = flavor.additional_resource_dirs.clone()
+            .or_else(|| app.additional_resource_dirs.clone());
+        
+        BuildConfig {
+            resource_dir,
+            manifest_path,
+            output_dir: flavor.output_dir.clone()
+                .or_else(|| app.output_dir.clone())
+                .unwrap_or_else(|| common_output_dir.clone()),
+            output_file,
+            package_name,
+            aapt2_path: common_aapt2_path.clone(),
+            android_jar: common_android_jar.clone(),
+            aar_files: common_aar_files.clone(),
+            incremental: common_incremental,
+            cache_dir: common_cache_dir.clone(),
+            version_code: flavor.version_code
+                .or(app.version_code)
+                .or(common_version_code),
+            version_name: flavor.version_name.clone()
+                .or_else(|| app.version_name.clone())
+                .or_else(|| common_version_name.clone()),
+            additional_resource_dirs,
+            compiled_dir: None,
+            stable_ids_file: common_stable_ids_file.clone(),
+            parallel_workers: common_parallel_workers,
+        }
     }
 }
 

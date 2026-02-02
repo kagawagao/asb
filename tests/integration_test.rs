@@ -357,3 +357,119 @@ fn test_app_config_base_dir_with_overrides() {
     assert_eq!(configs[1].resource_dir, PathBuf::from("./custom/res"));
     assert_eq!(configs[1].manifest_path, PathBuf::from("./otherapp/AndroidManifest.xml"));
 }
+
+#[test]
+fn test_app_with_flavors() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "apps": [
+            {
+                "baseDir": "./myapp",
+                "packageName": "com.example.app",
+                "flavors": [
+                    {
+                        "name": "free"
+                    },
+                    {
+                        "name": "pro",
+                        "versionCode": 2
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    // Should have 2 configs (one per flavor)
+    assert_eq!(configs.len(), 2);
+    
+    // Free flavor
+    assert_eq!(configs[0].package_name, "com.example.app.free");
+    assert_eq!(configs[0].resource_dir, PathBuf::from("./myapp/res"));
+    
+    // Pro flavor with override
+    assert_eq!(configs[1].package_name, "com.example.app.pro");
+    assert_eq!(configs[1].version_code, Some(2));
+}
+
+#[test]
+fn test_flavors_with_overrides() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "apps": [
+            {
+                "baseDir": "./myapp",
+                "packageName": "com.example.app",
+                "outputFile": "app.skin",
+                "flavors": [
+                    {
+                        "name": "free",
+                        "packageName": "com.example.free",
+                        "outputFile": "free.skin"
+                    },
+                    {
+                        "name": "pro",
+                        "packageName": "com.example.pro",
+                        "outputFile": "pro.skin",
+                        "baseDir": "./custom"
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    assert_eq!(configs.len(), 2);
+    
+    // Free flavor overrides
+    assert_eq!(configs[0].package_name, "com.example.free");
+    assert_eq!(configs[0].output_file, Some("free.skin".to_string()));
+    assert_eq!(configs[0].resource_dir, PathBuf::from("./myapp/res"));
+    
+    // Pro flavor overrides including baseDir
+    assert_eq!(configs[1].package_name, "com.example.pro");
+    assert_eq!(configs[1].output_file, Some("pro.skin".to_string()));
+    assert_eq!(configs[1].resource_dir, PathBuf::from("./custom/res"));
+}
+
+#[test]
+fn test_multiple_apps_with_flavors() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "apps": [
+            {
+                "baseDir": "./app1",
+                "packageName": "com.example.app1"
+            },
+            {
+                "baseDir": "./app2",
+                "packageName": "com.example.app2",
+                "flavors": [
+                    {
+                        "name": "dev"
+                    },
+                    {
+                        "name": "prod"
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    // Should have 3 configs (1 for app1, 2 for app2 flavors)
+    assert_eq!(configs.len(), 3);
+    
+    assert_eq!(configs[0].package_name, "com.example.app1");
+    assert_eq!(configs[1].package_name, "com.example.app2.dev");
+    assert_eq!(configs[2].package_name, "com.example.app2.prod");
+}

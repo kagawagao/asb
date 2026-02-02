@@ -1,0 +1,24 @@
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "baseDir": "./",
+      "packageName": "com.example.skin.myapp",
+      "flavors": [
+        {
+          "name": "free",
+          "outputFile": "myapp-free.skin"
+        },
+        {
+          "name": "pro",
+          "outputFile": "myapp-pro.skin",
+          "versionCode": 2
+        }
+      ]
+    }
+  ]
+}
