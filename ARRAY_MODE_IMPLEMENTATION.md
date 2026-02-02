@@ -47,7 +47,9 @@ A feature may contain multiple applications, and skin packages need to be built 
 ```rust
 /// Multi-app configuration wrapper with common fields at top level
 pub struct MultiAppConfig {
+    pub base_dir: Option<PathBuf>,        // NEW: provides defaults
     pub output_dir: PathBuf,
+    pub output_file: Option<String>,       // NEW: custom filename
     pub android_jar: PathBuf,
     pub incremental: Option<bool>,
     pub version_code: Option<u32>,
@@ -58,13 +60,30 @@ pub struct MultiAppConfig {
 
 /// App-specific configuration (only unique fields per app)
 pub struct AppConfig {
-    pub resource_dir: PathBuf,
-    pub manifest_path: PathBuf,
+    pub base_dir: Option<PathBuf>,         // NEW: app-specific base
+    pub resource_dir: Option<PathBuf>,     // Optional with baseDir
+    pub manifest_path: Option<PathBuf>,    // Optional with baseDir
     pub package_name: String,
+    pub output_file: Option<String>,       // NEW: per-app filename
     pub additional_resource_dirs: Option<Vec<PathBuf>>,
     // ... optional overrides
 }
 ```
+
+### New Features
+
+**baseDir Configuration**: Provides automatic defaults for standard Android project structure
+- When `baseDir` is specified (common or per-app), defaults are:
+  - `resourceDir = $baseDir/res`
+  - `manifestPath = $baseDir/AndroidManifest.xml`
+- Can still override `resourceDir` or `manifestPath` explicitly if needed
+- Reduces configuration verbosity for standard layouts
+
+**outputFile Configuration**: Custom output filenames
+- Specify custom output file names instead of default `{packageName}.skin`
+- Can be set at common level or overridden per app
+- Combined with `outputDir` to create final output path
+- Example: `"outputFile": "base.skin"` produces `./build/base.skin`
 
 ### Enhanced: `src/types.rs`
 ```rust
@@ -101,9 +120,10 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>)
 
 ## Usage Examples
 
-### Example 1: Multi-App Object Format (Recommended)
+### Example 1: Multi-App Object Format with baseDir (Recommended)
 ```json
 {
+  "baseDir": "./",
   "outputDir": "./build",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
@@ -111,13 +131,11 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>)
   "versionName": "1.0.0",
   "apps": [
     {
-      "resourceDir": "./app1/res",
-      "manifestPath": "./app1/AndroidManifest.xml",
+      "baseDir": "./app1",
       "packageName": "com.example.skin.app1"
     },
     {
-      "resourceDir": "./app2/res",
-      "manifestPath": "./app2/AndroidManifest.xml",
+      "baseDir": "./app2",
       "packageName": "com.example.skin.app2"
     }
   ]
@@ -127,34 +145,36 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>)
 **Benefits:**
 - ✅ Config file remains an **object** (not array)
 - ✅ Common fields defined once (no duplication)
-- ✅ Each app only specifies unique fields
+- ✅ **baseDir automatically provides defaults**: `resourceDir=$baseDir/res`, `manifestPath=$baseDir/AndroidManifest.xml`
+- ✅ Each app only needs `baseDir` and `packageName` for standard layout
 - ✅ Easy to maintain and extend
 
 Result: Both apps built in parallel (~0.12s total)
 
-### Example 2: Multi-App With Dependencies
+### Example 2: Multi-App With Dependencies and Custom Output Files
 ```json
 {
+  "baseDir": "./",
   "outputDir": "./build",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
   "apps": [
     {
-      "resourceDir": "./base/res",
-      "manifestPath": "./base/AndroidManifest.xml",
-      "packageName": "com.example.skin.base"
+      "baseDir": "./base",
+      "packageName": "com.example.skin.base",
+      "outputFile": "base.skin"
     },
     {
-      "resourceDir": "./feature1/res",
-      "manifestPath": "./feature1/AndroidManifest.xml",
+      "baseDir": "./feature1",
       "packageName": "com.example.skin.feature1",
-      "additionalResourceDirs": ["./base/res"]
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature1.skin"
     },
     {
-      "resourceDir": "./feature2/res",
-      "manifestPath": "./feature2/AndroidManifest.xml",
+      "baseDir": "./feature2",
       "packageName": "com.example.skin.feature2",
-      "additionalResourceDirs": ["./base/res"]
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature2.skin"
     }
   ]
 }

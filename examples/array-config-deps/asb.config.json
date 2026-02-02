@@ -1,4 +1,5 @@
 {
+  "baseDir": "./",
   "outputDir": "./build",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
@@ -6,21 +7,21 @@
   "versionName": "1.0.0",
   "apps": [
     {
-      "resourceDir": "./base/res",
-      "manifestPath": "./base/AndroidManifest.xml",
-      "packageName": "com.example.skin.base"
+      "baseDir": "./base",
+      "packageName": "com.example.skin.base",
+      "outputFile": "base.skin"
     },
     {
-      "resourceDir": "./feature1/res",
-      "manifestPath": "./feature1/AndroidManifest.xml",
+      "baseDir": "./feature1",
       "packageName": "com.example.skin.feature1",
-      "additionalResourceDirs": ["./base/res"]
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature1.skin"
     },
     {
-      "resourceDir": "./feature2/res",
-      "manifestPath": "./feature2/AndroidManifest.xml",
+      "baseDir": "./feature2",
       "packageName": "com.example.skin.feature2",
-      "additionalResourceDirs": ["./base/res"]
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature2.skin"
     }
   ]
 }

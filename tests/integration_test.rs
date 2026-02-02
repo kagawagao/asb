@@ -267,3 +267,93 @@ fn test_multi_app_with_app_specific_overrides() {
     assert_eq!(configs[1].version_code, Some(2));
     assert_eq!(configs[1].version_name, Some("2.0.0".to_string()));
 }
+
+#[test]
+fn test_multi_app_with_base_dir() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "baseDir": "./apps",
+        "apps": [
+            {
+                "packageName": "com.example.app1"
+            },
+            {
+                "baseDir": "./custom",
+                "packageName": "com.example.app2"
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    // First app uses common baseDir
+    assert_eq!(configs[0].resource_dir, PathBuf::from("./apps/res"));
+    assert_eq!(configs[0].manifest_path, PathBuf::from("./apps/AndroidManifest.xml"));
+    
+    // Second app overrides baseDir
+    assert_eq!(configs[1].resource_dir, PathBuf::from("./custom/res"));
+    assert_eq!(configs[1].manifest_path, PathBuf::from("./custom/AndroidManifest.xml"));
+}
+
+#[test]
+fn test_multi_app_with_output_file() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "outputFile": "custom.skin",
+        "apps": [
+            {
+                "resourceDir": "./app1/res",
+                "manifestPath": "./app1/AndroidManifest.xml",
+                "packageName": "com.example.app1"
+            },
+            {
+                "resourceDir": "./app2/res",
+                "manifestPath": "./app2/AndroidManifest.xml",
+                "packageName": "com.example.app2",
+                "outputFile": "app2-custom.skin"
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    // First app uses common outputFile
+    assert_eq!(configs[0].output_file, Some("custom.skin".to_string()));
+    
+    // Second app overrides outputFile
+    assert_eq!(configs[1].output_file, Some("app2-custom.skin".to_string()));
+}
+
+#[test]
+fn test_app_config_base_dir_with_overrides() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "apps": [
+            {
+                "baseDir": "./myapp",
+                "packageName": "com.example.app"
+            },
+            {
+                "baseDir": "./otherapp",
+                "resourceDir": "./custom/res",
+                "packageName": "com.example.other"
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    // First app derives both from baseDir
+    assert_eq!(configs[0].resource_dir, PathBuf::from("./myapp/res"));
+    assert_eq!(configs[0].manifest_path, PathBuf::from("./myapp/AndroidManifest.xml"));
+    
+    // Second app overrides resourceDir but derives manifestPath from baseDir
+    assert_eq!(configs[1].resource_dir, PathBuf::from("./custom/res"));
+    assert_eq!(configs[1].manifest_path, PathBuf::from("./otherapp/AndroidManifest.xml"));
+}

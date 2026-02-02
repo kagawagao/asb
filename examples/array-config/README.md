@@ -4,10 +4,11 @@ This example demonstrates using the new object-based multi-app configuration for
 
 ## Configuration
 
-The `asb.config.json` file uses an object format with common fields at the top level and an `apps` array for app-specific configurations:
+The `asb.config.json` file uses an object format with common fields at the top level and an `apps` array for app-specific configurations. It also demonstrates the new `baseDir` feature which provides automatic defaults:
 
 ```json
 {
+  "baseDir": "./",
   "outputDir": "./build",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
@@ -15,24 +16,32 @@ The `asb.config.json` file uses an object format with common fields at the top l
   "versionName": "1.0.0",
   "apps": [
     {
-      "resourceDir": "./app1/res",
-      "manifestPath": "./app1/AndroidManifest.xml",
+      "baseDir": "./app1",
       "packageName": "com.example.skin.app1"
     },
     {
-      "resourceDir": "./app2/res",
-      "manifestPath": "./app2/AndroidManifest.xml",
+      "baseDir": "./app2",
       "packageName": "com.example.skin.app2"
     }
   ]
 }
 ```
 
-## Benefits
+## New Features Demonstrated
+
+### baseDir Configuration
+When `baseDir` is specified (either at the top level or per app):
+- `resourceDir` defaults to `$baseDir/res`
+- `manifestPath` defaults to `$baseDir/AndroidManifest.xml`
+
+This eliminates the need to specify these paths explicitly when following standard Android project structure.
+
+### Benefits
 
 - **No Duplication**: Common configuration (outputDir, androidJar, incremental, etc.) is defined once at the top level
-- **Clean Structure**: Each app only needs to specify what's unique (resourceDir, manifestPath, packageName)
+- **Clean Structure**: Each app only needs to specify `baseDir` and `packageName` when following standard structure
 - **Object Format**: The config file remains an object (not an array), making it easier to extend with additional top-level settings
+- **Flexible**: Can still override `resourceDir` or `manifestPath` per app if needed
 
 ## Building
 

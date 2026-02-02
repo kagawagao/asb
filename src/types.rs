@@ -5,13 +5,20 @@ use std::path::PathBuf;
 /// Contains only app-specific fields, common fields are inherited from parent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    /// Base directory for app (optional, provides defaults for resourceDir and manifestPath)
+    /// If specified, resourceDir defaults to $baseDir/res and manifestPath defaults to $baseDir/AndroidManifest.xml
+    #[serde(rename = "baseDir", skip_serializing_if = "Option::is_none")]
+    pub base_dir: Option<PathBuf>,
+
     /// Path to the resources directory (res/)
-    #[serde(rename = "resourceDir")]
-    pub resource_dir: PathBuf,
+    /// If not specified and baseDir is provided, defaults to $baseDir/res
+    #[serde(rename = "resourceDir", skip_serializing_if = "Option::is_none")]
+    pub resource_dir: Option<PathBuf>,
 
     /// Path to the Android manifest file
-    #[serde(rename = "manifestPath")]
-    pub manifest_path: PathBuf,
+    /// If not specified and baseDir is provided, defaults to $baseDir/AndroidManifest.xml
+    #[serde(rename = "manifestPath", skip_serializing_if = "Option::is_none")]
+    pub manifest_path: Option<PathBuf>,
 
     /// Package name for the skin package
     #[serde(rename = "packageName")]
@@ -29,6 +36,10 @@ pub struct AppConfig {
     #[serde(rename = "outputDir", skip_serializing_if = "Option::is_none")]
     pub output_dir: Option<PathBuf>,
 
+    /// App-specific output file name override (optional)
+    #[serde(rename = "outputFile", skip_serializing_if = "Option::is_none")]
+    pub output_file: Option<String>,
+
     /// App-specific version code override (optional)
     #[serde(rename = "versionCode", skip_serializing_if = "Option::is_none")]
     pub version_code: Option<u32>,
@@ -42,9 +53,19 @@ pub struct AppConfig {
 /// Supports multiple apps with common configuration extracted to top level
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiAppConfig {
+    /// Common base directory for all apps (optional)
+    /// Provides defaults for resourceDir and manifestPath if not specified per app
+    #[serde(rename = "baseDir", skip_serializing_if = "Option::is_none")]
+    pub base_dir: Option<PathBuf>,
+
     /// Common output directory for all apps
     #[serde(rename = "outputDir")]
     pub output_dir: PathBuf,
+
+    /// Common output file name pattern (optional)
+    /// Can use placeholders or be overridden per app
+    #[serde(rename = "outputFile", skip_serializing_if = "Option::is_none")]
+    pub output_file: Option<String>,
 
     /// Common Android platform JAR path
     #[serde(rename = "androidJar")]
@@ -92,22 +113,38 @@ impl MultiAppConfig {
     pub fn into_build_configs(self) -> Vec<BuildConfig> {
         self.apps
             .into_iter()
-            .map(|app| BuildConfig {
-                resource_dir: app.resource_dir,
-                manifest_path: app.manifest_path,
-                output_dir: app.output_dir.unwrap_or_else(|| self.output_dir.clone()),
-                package_name: app.package_name,
-                aapt2_path: self.aapt2_path.clone(),
-                android_jar: self.android_jar.clone(),
-                aar_files: self.aar_files.clone(),
-                incremental: self.incremental,
-                cache_dir: self.cache_dir.clone(),
-                version_code: app.version_code.or(self.version_code),
-                version_name: app.version_name.or_else(|| self.version_name.clone()),
-                additional_resource_dirs: app.additional_resource_dirs,
-                compiled_dir: None, // Will be set later if needed
-                stable_ids_file: self.stable_ids_file.clone(),
-                parallel_workers: self.parallel_workers,
+            .map(|app| {
+                // Determine base_dir: app-specific > common
+                let base_dir = app.base_dir.or_else(|| self.base_dir.clone());
+                
+                // Determine resource_dir with defaults
+                let resource_dir = app.resource_dir.or_else(|| {
+                    base_dir.as_ref().map(|bd| bd.join("res"))
+                }).expect("resourceDir must be specified or derivable from baseDir");
+                
+                // Determine manifest_path with defaults
+                let manifest_path = app.manifest_path.or_else(|| {
+                    base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml"))
+                }).expect("manifestPath must be specified or derivable from baseDir");
+                
+                BuildConfig {
+                    resource_dir,
+                    manifest_path,
+                    output_dir: app.output_dir.unwrap_or_else(|| self.output_dir.clone()),
+                    output_file: app.output_file.or_else(|| self.output_file.clone()),
+                    package_name: app.package_name,
+                    aapt2_path: self.aapt2_path.clone(),
+                    android_jar: self.android_jar.clone(),
+                    aar_files: self.aar_files.clone(),
+                    incremental: self.incremental,
+                    cache_dir: self.cache_dir.clone(),
+                    version_code: app.version_code.or(self.version_code),
+                    version_name: app.version_name.or_else(|| self.version_name.clone()),
+                    additional_resource_dirs: app.additional_resource_dirs,
+                    compiled_dir: None, // Will be set later if needed
+                    stable_ids_file: self.stable_ids_file.clone(),
+                    parallel_workers: self.parallel_workers,
+                }
             })
             .collect()
     }
@@ -127,6 +164,11 @@ pub struct BuildConfig {
     /// Output directory for the skin package
     #[serde(rename = "outputDir")]
     pub output_dir: PathBuf,
+
+    /// Output file name for the skin package (optional)
+    /// If not specified, defaults to {packageName}.skin
+    #[serde(rename = "outputFile", skip_serializing_if = "Option::is_none")]
+    pub output_file: Option<String>,
 
     /// Package name for the skin package
     #[serde(rename = "packageName")]
@@ -195,6 +237,7 @@ impl BuildConfig {
             resource_dir: PathBuf::from("./src/main/res"),
             manifest_path: PathBuf::from("./src/main/AndroidManifest.xml"),
             output_dir: PathBuf::from("./build/outputs/skin"),
+            output_file: None,
             package_name: "com.example.skin".to_string(),
             android_jar,
             aar_files: None,

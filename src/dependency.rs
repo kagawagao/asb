@@ -218,6 +218,7 @@ mod tests {
         let config1 = BuildConfig {
             resource_dir: PathBuf::from("./res1"),
             manifest_path: PathBuf::from("./AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build1"),
             package_name: "com.example.app1".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -236,6 +237,7 @@ mod tests {
         let config2 = BuildConfig {
             resource_dir: PathBuf::from("./res2"),
             manifest_path: PathBuf::from("./AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build2"),
             package_name: "com.example.app2".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -265,6 +267,7 @@ mod tests {
         let base_config = BuildConfig {
             resource_dir: PathBuf::from("./base/res"),
             manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.base".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -284,6 +287,7 @@ mod tests {
         let feature_config = BuildConfig {
             resource_dir: PathBuf::from("./feature/res"),
             manifest_path: PathBuf::from("./feature/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.feature".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -320,6 +324,7 @@ mod tests {
         let base_config = BuildConfig {
             resource_dir: PathBuf::from("./base/res"),
             manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.base".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -339,6 +344,7 @@ mod tests {
         let feature1_config = BuildConfig {
             resource_dir: PathBuf::from("./feature1/res"),
             manifest_path: PathBuf::from("./feature1/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.feature1".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -358,6 +364,7 @@ mod tests {
         let feature2_config = BuildConfig {
             resource_dir: PathBuf::from("./feature2/res"),
             manifest_path: PathBuf::from("./feature2/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.feature2".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -392,6 +399,7 @@ mod tests {
         let independent_config = BuildConfig {
             resource_dir: PathBuf::from("./independent/res"),
             manifest_path: PathBuf::from("./independent/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.independent".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -411,6 +419,7 @@ mod tests {
         let base_config = BuildConfig {
             resource_dir: PathBuf::from("./base/res"),
             manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.base".to_string(),
             android_jar: PathBuf::from("android.jar"),
@@ -430,6 +439,7 @@ mod tests {
         let feature_config = BuildConfig {
             resource_dir: PathBuf::from("./feature/res"),
             manifest_path: PathBuf::from("./feature/AndroidManifest.xml"),
+            output_file: None,
             output_dir: PathBuf::from("./build"),
             package_name: "com.example.feature".to_string(),
             android_jar: PathBuf::from("android.jar"),

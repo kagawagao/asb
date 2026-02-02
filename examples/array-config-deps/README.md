@@ -1,6 +1,6 @@
 # Multi-App Configuration with Dependencies Example
 
-This example demonstrates using the object-based multi-app configuration with dependencies between configurations. Feature1 and Feature2 both depend on Base resources.
+This example demonstrates using the object-based multi-app configuration with dependencies between configurations. Feature1 and Feature2 both depend on Base resources. It also showcases the new `baseDir` and `outputFile` features.
 
 ## Configuration
 
@@ -8,6 +8,7 @@ The `asb.config.json` file uses an object format with common fields at the top l
 
 ```json
 {
+  "baseDir": "./",
   "outputDir": "./build",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
@@ -15,25 +16,37 @@ The `asb.config.json` file uses an object format with common fields at the top l
   "versionName": "1.0.0",
   "apps": [
     {
-      "resourceDir": "./base/res",
-      "manifestPath": "./base/AndroidManifest.xml",
-      "packageName": "com.example.skin.base"
+      "baseDir": "./base",
+      "packageName": "com.example.skin.base",
+      "outputFile": "base.skin"
     },
     {
-      "resourceDir": "./feature1/res",
-      "manifestPath": "./feature1/AndroidManifest.xml",
+      "baseDir": "./feature1",
       "packageName": "com.example.skin.feature1",
-      "additionalResourceDirs": ["./base/res"]
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature1.skin"
     },
     {
-      "resourceDir": "./feature2/res",
-      "manifestPath": "./feature2/AndroidManifest.xml",
+      "baseDir": "./feature2",
       "packageName": "com.example.skin.feature2",
-      "additionalResourceDirs": ["./base/res"]
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature2.skin"
     }
   ]
 }
 ```
+
+## New Features Demonstrated
+
+### baseDir Configuration
+- Each app specifies only `baseDir` instead of explicit `resourceDir` and `manifestPath`
+- `resourceDir` automatically becomes `$baseDir/res`
+- `manifestPath` automatically becomes `$baseDir/AndroidManifest.xml`
+
+### outputFile Configuration
+- Custom output file names specified per app: `base.skin`, `feature1.skin`, `feature2.skin`
+- Without this, outputs would default to `{packageName}.skin`
+- Combined with `outputDir` to determine full output path
 
 ## Build Order
 
@@ -53,7 +66,7 @@ asb build
 
 ## Output
 
-The build will generate three skin packages in the `build` directory:
-- `com.example.skin.base.skin`
-- `com.example.skin.feature1.skin`
-- `com.example.skin.feature2.skin`
+The build will generate three skin packages in the `build` directory with custom names:
+- `base.skin`
+- `feature1.skin`
+- `feature2.skin`
