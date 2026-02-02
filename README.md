@@ -11,7 +11,6 @@
 - 🚀 **增量构建** - 支持增量打包，提升构建速度
 - ⚡ **并发编译** - 充分利用 CPU 多核性能，支持并行资源编译
 - 🔒 **资源 ID 稳定** - 支持 stable IDs，确保每次编译的资源 ID 不变
-- 🏗️ **多模块支持** - 支持多 module 工程，可将多个模块打包并合并为一个文件
 - 🔧 **脚本化工具** - 完全可通过命令行或配置文件使用
 - 🌐 **跨平台** - 支持 Windows、macOS、Linux
 - 💪 **Rust 实现** - 使用 Rust 编写，极致性能和内存安全
@@ -226,42 +225,6 @@ asb build \
   --aar ./libs/library2.aar
 ```
 
-#### `asb build-multi`
-
-构建多模块项目并合并
-
-```bash
-asb build-multi --config multi-module.json
-```
-
-多模块配置文件示例 `multi-module.json`:
-
-```json
-{
-  "modules": [
-    {
-      "name": "base",
-      "resourceDir": "./modules/base/res",
-      "manifestPath": "./modules/base/AndroidManifest.xml",
-      "outputDir": "./build/base",
-      "packageName": "com.example.skin.base",
-      "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
-      "incremental": true
-    },
-    {
-      "name": "theme-dark",
-      "resourceDir": "./modules/theme-dark/res",
-      "manifestPath": "./modules/theme-dark/AndroidManifest.xml",
-      "outputDir": "./build/theme-dark",
-      "packageName": "com.example.skin.dark",
-      "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
-      "incremental": true
-    }
-  ],
-  "mergedOutput": "./build/merged-skin.asb"
-}
-```
-
 #### `asb clean`
 
 清理构建产物
@@ -373,15 +336,7 @@ ASB 使用 Rust 的 Rayon 库实现并行资源编译：
 asb build --config skin-theme.json --stable-ids stable-ids.txt
 ```
 
-### 2. 多模块插件化开发
-
-为插件化应用构建多个模块并合并：
-
-```bash
-asb build-multi --config multi-module.json
-```
-
-### 3. 大型项目快速构建
+### 2. 大型项目快速构建
 
 利用并发编译和增量构建加速开发：
 
@@ -397,7 +352,7 @@ asb (Rust)
 ├── aar.rs         - AAR extraction
 ├── cache.rs       - Incremental build cache (SHA-256)
 ├── builder.rs     - Main build orchestration
-├── merge.rs       - Multi-module merging
+├── merge.rs       - Internal merging utilities
 ├── cli.rs         - Command-line interface
 ├── types.rs       - Type definitions
 └── main.rs        - Entry point
@@ -420,7 +375,6 @@ asb (Rust)
 | 并发支持 | Worker threads | Native threads (Rayon) |
 | 启动速度 | 慢 (Node.js) | 快 (native binary) |
 | 二进制大小 | 大 (Node.js + deps) | 小 (single binary) |
-| 多模块合并 | ❌ | ✅ |
 | Stable IDs | ❌ | ✅ |
 | 编译期错误检查 | 有限 | 完整 |
 
@@ -491,18 +445,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [AAPT2 Documentation](https://developer.android.com/tools/aapt2)
 - [Android Asset Packaging](https://android.googlesource.com/platform/frameworks/base/+/master/tools/aapt2/)
 - [Rust Programming Language](https://www.rust-lang.org/)
-
-确保 AAR 文件存在且未损坏。
-
-## License
-
-MIT © Jingsong Gao
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Links
-
-- [AAPT2 Documentation](https://developer.android.com/tools/aapt2)
-- [Android Asset Packaging](https://android.googlesource.com/platform/frameworks/base/+/master/tools/aapt2/)
