@@ -1,5 +1,4 @@
-use anyhow::{Context, Result};
-use rayon::prelude::*;
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 use walkdir::WalkDir;
@@ -7,7 +6,7 @@ use walkdir::WalkDir;
 use crate::aapt2::Aapt2;
 use crate::aar::AarExtractor;
 use crate::cache::BuildCache;
-use crate::types::{AarInfo, BuildConfig, BuildResult, CompileResult};
+use crate::types::{BuildConfig, BuildResult, CompileResult};
 
 /// Normalize a resource path by removing version qualifiers
 /// e.g., "res/drawable-v21/icon.xml" -> "res/drawable/icon.xml"
@@ -223,30 +222,12 @@ impl SkinBuilder {
     }
 
     /// Add raw resource files to the APK
-    fn add_resources_to_apk(&self, apk_path: &Path, resource_dirs: &[PathBuf]) -> Result<()> {
+    fn add_resources_to_apk(&self, apk_path: &Path, _resource_dirs: &[PathBuf]) -> Result<()> {
         use std::collections::HashSet;
         use std::fs::File;
         use std::io::{Read, Write};
         use zip::write::SimpleFileOptions;
         use zip::{CompressionMethod, ZipArchive, ZipWriter};
-
-        // Read existing APK
-        let apk_file = File::open(apk_path)?;
-        let mut zip_archive = ZipArchive::new(apk_file)?;
-
-        // First, determine which resources are actually in the linked APK
-        // by checking what's already in the res/ directory
-        // We normalize paths to remove version qualifiers for comparison
-        let mut included_resources = HashSet::new();
-        for i in 0..zip_archive.len() {
-            let file = zip_archive.by_index(i)?;
-            let name = file.name();
-            if name.starts_with("res/") && name != "res/" {
-                // Normalize the path to remove version qualifiers like -v21, -v11, etc.
-                let normalized = normalize_resource_path(name);
-                included_resources.insert(normalized);
-            }
-        }
 
         // Create temp APK
         let temp_apk = apk_path.with_extension("skin.tmp");
@@ -262,11 +243,11 @@ impl SkinBuilder {
 
         // Copy existing entries (resources.arsc, AndroidManifest.xml, etc.)
         // BUT skip res/ entries - we'll add raw XML files instead
-        let apk_file2 = File::open(apk_path)?;
-        let mut zip_archive2 = ZipArchive::new(apk_file2)?;
+        let apk_file = File::open(apk_path)?;
+        let mut zip_archive = ZipArchive::new(apk_file)?;
         
-        for i in 0..zip_archive2.len() {
-            let mut file = zip_archive2.by_index(i)?;
+        for i in 0..zip_archive.len() {
+            let mut file = zip_archive.by_index(i)?;
             let name = file.name().to_string();
             
             // Skip res/ entries - we'll add the raw XML files from source directories
@@ -333,7 +314,8 @@ impl SkinBuilder {
             }
         }
 
-        // For additional resource directories, only add resources that are included in the linked APK
+        // For additional resource directories, add ALL resources to avoid runtime errors
+        // from unreferenced resources
         for res_dir in additional_dirs {
             if !res_dir.exists() {
                 continue;
@@ -359,13 +341,6 @@ impl SkinBuilder {
                 // Get relative path from res directory
                 if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
                     let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
-
-                    // Only add if this resource was included by aapt2 link
-                    // (meaning it was actually referenced)
-                    if !included_resources.contains(&zip_path) {
-                        debug!("Skipping unreferenced resource from additional dir: {}", zip_path);
-                        continue;
-                    }
 
                     // Skip if already added
                     if added_files.contains(&zip_path) {
