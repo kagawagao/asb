@@ -272,7 +272,12 @@ impl Aapt2 {
             .arg("-o")
             .arg(output_apk)
             .arg("--auto-add-overlay")
-            .arg("--no-version-vectors");
+            .arg("--no-version-vectors")
+            // Keep resource files in the APK (not just resources.arsc)
+            .arg("--keep-raw-values")
+            // Allow references to resources not defined in this package
+            .arg("--allow-reserved-package-id")
+            .arg("--no-resource-removal");
 
         if let Some(pkg) = package_name {
             cmd.arg("--rename-manifest-package").arg(pkg);

@@ -162,12 +162,108 @@ impl SkinBuilder {
             });
         }
 
+        // Add raw resource files to the skin package
+        info!("Adding resource files to skin package...");
+        self.add_resources_to_apk(&output_apk, &resource_dirs)?;
+
         info!("Build completed successfully!");
         Ok(BuildResult {
             success: true,
             apk_path: link_result.apk_path,
             errors: vec![],
         })
+    }
+
+    /// Add raw resource files to the APK
+    fn add_resources_to_apk(&self, apk_path: &Path, resource_dirs: &[PathBuf]) -> Result<()> {
+        use std::collections::HashSet;
+        use std::fs::File;
+        use std::io::{Read, Write};
+        use zip::write::SimpleFileOptions;
+        use zip::{CompressionMethod, ZipArchive, ZipWriter};
+
+        // Read existing APK
+        let apk_file = File::open(apk_path)?;
+        let mut zip_archive = ZipArchive::new(apk_file)?;
+
+        // Create temp APK
+        let temp_apk = apk_path.with_extension("skin.tmp");
+        let temp_file = File::create(&temp_apk)?;
+        let mut zip_writer = ZipWriter::new(temp_file);
+
+        let options = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        // Track which files have been added to avoid duplicates
+        let mut added_files = HashSet::new();
+
+        // Copy existing entries (resources.arsc, AndroidManifest.xml, etc.)
+        for i in 0..zip_archive.len() {
+            let mut file = zip_archive.by_index(i)?;
+            let name = file.name().to_string();
+            
+            added_files.insert(name.clone());
+
+            zip_writer.start_file(&name, options)?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+            zip_writer.write_all(&buffer)?;
+        }
+
+        // Add resource files from all resource directories
+        for res_dir in resource_dirs {
+            if !res_dir.exists() {
+                continue;
+            }
+
+            for entry in WalkDir::new(res_dir)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+            {
+                let file_path = entry.path();
+                
+                // Skip hidden files and non-resource files
+                if file_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with('.'))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+
+                // Get relative path from res directory
+                if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
+                    // Add "res/" prefix
+                    let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
+
+                    // Skip if already added
+                    if added_files.contains(&zip_path) {
+                        continue;
+                    }
+                    
+                    added_files.insert(zip_path.clone());
+
+                    // Read file content
+                    let mut file = File::open(file_path)?;
+                    let mut buffer = Vec::new();
+                    file.read_to_end(&mut buffer)?;
+
+                    // Add to ZIP
+                    zip_writer.start_file(&zip_path, options)?;
+                    zip_writer.write_all(&buffer)?;
+                }
+            }
+        }
+
+        zip_writer.finish()?;
+
+        // Replace original APK with temp APK
+        std::fs::rename(&temp_apk, apk_path)?;
+
+        Ok(())
     }
 
     /// Compile a resource directory
