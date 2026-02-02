@@ -186,6 +186,38 @@ impl BuildConfig {
         // Use built-in defaults
         Ok(Self::default_config())
     }
+
+    /// Load multiple configurations from file
+    /// Supports both single object and array mode for backward compatibility
+    pub fn load_configs(config_file: Option<PathBuf>) -> anyhow::Result<Vec<Self>> {
+        // Determine which config file to use
+        let config_path = if let Some(path) = config_file {
+            path
+        } else {
+            let default_path = PathBuf::from("./asb.config.json");
+            if default_path.exists() {
+                default_path
+            } else {
+                // No config file, use default single config
+                return Ok(vec![Self::default_config()]);
+            }
+        };
+
+        let content = std::fs::read_to_string(&config_path)?;
+        
+        // Try to parse as array first
+        if let Ok(mut configs) = serde_json::from_str::<Vec<Self>>(&content) {
+            for config in &mut configs {
+                config.expand_paths();
+            }
+            return Ok(configs);
+        }
+        
+        // Fall back to single object (backward compatibility)
+        let mut config: Self = serde_json::from_str(&content)?;
+        config.expand_paths();
+        Ok(vec![config])
+    }
 }
 
 /// Result of aapt2 compile operation

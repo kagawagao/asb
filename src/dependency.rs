@@ -1,0 +1,225 @@
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use anyhow::Result;
+
+use crate::types::BuildConfig;
+
+/// Represents a build configuration with its index for ordering
+#[derive(Debug, Clone)]
+pub struct ConfigWithIndex {
+    pub index: usize,
+    pub config: BuildConfig,
+}
+
+/// Group configurations by their dependencies
+/// Returns (independent_configs, dependency_groups)
+/// where dependency_groups is a Vec of Vec, each inner Vec should be built sequentially
+pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) -> Result<(Vec<ConfigWithIndex>, Vec<Vec<ConfigWithIndex>>)> {
+    if configs.is_empty() {
+        return Ok((vec![], vec![]));
+    }
+    
+    if configs.len() == 1 {
+        return Ok((vec![ConfigWithIndex { index: 0, config: configs.into_iter().next().unwrap() }], vec![]));
+    }
+
+    // Build a map of resource directories to config indices that use them
+    let mut resource_dir_to_configs: HashMap<String, HashSet<usize>> = HashMap::new();
+    
+    for (idx, config) in configs.iter().enumerate() {
+        // Normalize and register the main resource directory
+        let main_res = normalize_path(&config.resource_dir);
+        resource_dir_to_configs.entry(main_res).or_insert_with(HashSet::new).insert(idx);
+        
+        // Register additional resource directories if present
+        if let Some(additional_dirs) = &config.additional_resource_dirs {
+            for dir in additional_dirs {
+                let normalized = normalize_path(dir);
+                resource_dir_to_configs.entry(normalized).or_insert_with(HashSet::new).insert(idx);
+            }
+        }
+    }
+    
+    // Build dependency graph: config_idx -> Vec<config_idx it depends on>
+    let mut dependencies: HashMap<usize, Vec<usize>> = HashMap::new();
+    
+    for (idx, config) in configs.iter().enumerate() {
+        let mut deps = Vec::new();
+        
+        // Check if any of this config's additional resource dirs are provided by other configs
+        if let Some(additional_dirs) = &config.additional_resource_dirs {
+            for dir in additional_dirs {
+                let normalized = normalize_path(dir);
+                
+                // Find which configs provide this resource directory
+                if let Some(providers) = resource_dir_to_configs.get(&normalized) {
+                    for &provider_idx in providers {
+                        // A config depends on another if the other provides a resource dir it needs
+                        // and it's not itself
+                        if provider_idx != idx {
+                            // Check if provider_idx's main resource_dir matches this additional dir
+                            let provider_main = normalize_path(&configs[provider_idx].resource_dir);
+                            if provider_main == normalized {
+                                deps.push(provider_idx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if !deps.is_empty() {
+            dependencies.insert(idx, deps);
+        }
+    }
+    
+    // Perform topological sort to determine build order
+    let sorted_indices = topological_sort(configs.len(), &dependencies)?;
+    
+    // Separate into independent and dependent groups
+    let mut independent = Vec::new();
+    let mut dependent_groups: Vec<Vec<ConfigWithIndex>> = Vec::new();
+    let mut current_group: Vec<ConfigWithIndex> = Vec::new();
+    let mut in_dependency_chain = HashSet::new();
+    
+    // Mark all configs that are part of dependency chains
+    for (&config_idx, deps) in &dependencies {
+        in_dependency_chain.insert(config_idx);
+        for &dep in deps {
+            in_dependency_chain.insert(dep);
+        }
+    }
+    
+    // Process sorted indices
+    for idx in sorted_indices {
+        let config = configs[idx].clone();
+        let config_with_idx = ConfigWithIndex { index: idx, config };
+        
+        if in_dependency_chain.contains(&idx) {
+            current_group.push(config_with_idx);
+        } else {
+            independent.push(config_with_idx);
+        }
+    }
+    
+    if !current_group.is_empty() {
+        dependent_groups.push(current_group);
+    }
+    
+    Ok((independent, dependent_groups))
+}
+
+/// Normalize a path to a string for comparison
+fn normalize_path(path: &PathBuf) -> String {
+    // Convert to absolute path if possible, otherwise use as-is
+    if let Ok(abs_path) = std::fs::canonicalize(path) {
+        abs_path.to_string_lossy().to_string()
+    } else {
+        // If path doesn't exist yet, just normalize the string representation
+        path.to_string_lossy().replace('\\', "/")
+    }
+}
+
+/// Perform topological sort on the dependency graph
+/// Returns the sorted indices
+fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>>) -> Result<Vec<usize>> {
+    let mut in_degree = vec![0; num_configs];
+    let mut adj_list: HashMap<usize, Vec<usize>> = HashMap::new();
+    
+    // Build adjacency list and calculate in-degrees
+    // dependencies maps: dependent -> dependencies
+    // We need: dependency -> dependents for topological sort
+    for (dependent, deps) in dependencies {
+        for &dependency in deps {
+            adj_list.entry(dependency).or_insert_with(Vec::new).push(*dependent);
+            in_degree[*dependent] += 1;
+        }
+    }
+    
+    // Find all nodes with in-degree 0 (no dependencies)
+    let mut queue: Vec<usize> = (0..num_configs)
+        .filter(|&i| in_degree[i] == 0)
+        .collect();
+    
+    let mut sorted = Vec::new();
+    
+    while let Some(node) = queue.pop() {
+        sorted.push(node);
+        
+        // Reduce in-degree for all dependents
+        if let Some(dependents) = adj_list.get(&node) {
+            for &dependent in dependents {
+                in_degree[dependent] -= 1;
+                if in_degree[dependent] == 0 {
+                    queue.push(dependent);
+                }
+            }
+        }
+    }
+    
+    // Check for cycles
+    if sorted.len() != num_configs {
+        anyhow::bail!("Circular dependency detected in configuration dependencies");
+    }
+    
+    Ok(sorted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_config() {
+        let configs = vec![BuildConfig::default_config()];
+        let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
+        assert_eq!(independent.len(), 1);
+        assert_eq!(dependent.len(), 0);
+    }
+
+    #[test]
+    fn test_independent_configs() {
+        let config1 = BuildConfig {
+            resource_dir: PathBuf::from("./res1"),
+            manifest_path: PathBuf::from("./AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build1"),
+            package_name: "com.example.app1".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+        
+        let config2 = BuildConfig {
+            resource_dir: PathBuf::from("./res2"),
+            manifest_path: PathBuf::from("./AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build2"),
+            package_name: "com.example.app2".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+        
+        let configs = vec![config1, config2];
+        let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
+        
+        // Both should be independent as they don't share resources
+        assert_eq!(independent.len(), 2);
+        assert_eq!(dependent.len(), 0);
+    }
+}
