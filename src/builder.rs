@@ -197,6 +197,17 @@ impl SkinBuilder {
         let apk_file = File::open(apk_path)?;
         let mut zip_archive = ZipArchive::new(apk_file)?;
 
+        // First, determine which resources are actually in the linked APK
+        // by checking what's already in the res/ directory
+        let mut included_resources = HashSet::new();
+        for i in 0..zip_archive.len() {
+            let file = zip_archive.by_index(i)?;
+            let name = file.name();
+            if name.starts_with("res/") && name != "res/" {
+                included_resources.insert(name.to_string());
+            }
+        }
+
         // Create temp APK
         let temp_apk = apk_path.with_extension("skin.tmp");
         let temp_file = File::create(&temp_apk)?;
@@ -210,8 +221,11 @@ impl SkinBuilder {
         let mut added_files = HashSet::new();
 
         // Copy existing entries (resources.arsc, AndroidManifest.xml, etc.)
-        for i in 0..zip_archive.len() {
-            let mut file = zip_archive.by_index(i)?;
+        let apk_file2 = File::open(apk_path)?;
+        let mut zip_archive2 = ZipArchive::new(apk_file2)?;
+        
+        for i in 0..zip_archive2.len() {
+            let mut file = zip_archive2.by_index(i)?;
             let name = file.name().to_string();
             
             added_files.insert(name.clone());
@@ -222,8 +236,58 @@ impl SkinBuilder {
             zip_writer.write_all(&buffer)?;
         }
 
-        // Add resource files from all resource directories
-        for res_dir in resource_dirs {
+        // Separate main resource dir from additional resource dirs
+        let main_res_dir = &self.config.resource_dir;
+        let additional_dirs: Vec<&PathBuf> = if let Some(additional) = &self.config.additional_resource_dirs {
+            additional.iter().collect()
+        } else {
+            vec![]
+        };
+
+        // Add ALL resource files from main resource directory
+        if main_res_dir.exists() {
+            for entry in WalkDir::new(main_res_dir)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+            {
+                let file_path = entry.path();
+                
+                // Skip hidden files
+                if file_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with('.'))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+
+                // Get relative path from res directory
+                if let Ok(rel_path) = file_path.strip_prefix(main_res_dir) {
+                    let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
+
+                    // Skip if already added
+                    if added_files.contains(&zip_path) {
+                        continue;
+                    }
+                    
+                    added_files.insert(zip_path.clone());
+
+                    // Read file content
+                    let mut file = File::open(file_path)?;
+                    let mut buffer = Vec::new();
+                    file.read_to_end(&mut buffer)?;
+
+                    // Add to ZIP
+                    zip_writer.start_file(&zip_path, options)?;
+                    zip_writer.write_all(&buffer)?;
+                }
+            }
+        }
+
+        // For additional resource directories, only add resources that are included in the linked APK
+        for res_dir in additional_dirs {
             if !res_dir.exists() {
                 continue;
             }
@@ -235,7 +299,7 @@ impl SkinBuilder {
             {
                 let file_path = entry.path();
                 
-                // Skip hidden files and non-resource files
+                // Skip hidden files
                 if file_path
                     .file_name()
                     .and_then(|n| n.to_str())
@@ -247,8 +311,14 @@ impl SkinBuilder {
 
                 // Get relative path from res directory
                 if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
-                    // Add "res/" prefix
                     let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
+
+                    // Only add if this resource was included by aapt2 link
+                    // (meaning it was actually referenced)
+                    if !included_resources.contains(&zip_path) {
+                        debug!("Skipping unreferenced resource from additional dir: {}", zip_path);
+                        continue;
+                    }
 
                     // Skip if already added
                     if added_files.contains(&zip_path) {
