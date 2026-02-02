@@ -154,3 +154,116 @@ fn test_config_with_all_optional_fields() {
     assert_eq!(config.stable_ids_file, Some(PathBuf::from("./stable-ids.txt")));
     assert_eq!(config.parallel_workers, Some(8));
 }
+
+#[test]
+fn test_multi_app_config_object_format() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "incremental": true,
+        "versionCode": 1,
+        "versionName": "1.0.0",
+        "apps": [
+            {
+                "resourceDir": "./app1/res",
+                "manifestPath": "./app1/AndroidManifest.xml",
+                "packageName": "com.example.app1"
+            },
+            {
+                "resourceDir": "./app2/res",
+                "manifestPath": "./app2/AndroidManifest.xml",
+                "packageName": "com.example.app2"
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    
+    assert_eq!(multi_config.output_dir, PathBuf::from("./build"));
+    assert_eq!(multi_config.android_jar, PathBuf::from("/path/to/android.jar"));
+    assert_eq!(multi_config.incremental, Some(true));
+    assert_eq!(multi_config.version_code, Some(1));
+    assert_eq!(multi_config.version_name, Some("1.0.0".to_string()));
+    assert_eq!(multi_config.apps.len(), 2);
+    
+    // Convert to BuildConfigs
+    let configs = multi_config.into_build_configs();
+    
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[0].package_name, "com.example.app1");
+    assert_eq!(configs[0].resource_dir, PathBuf::from("./app1/res"));
+    assert_eq!(configs[0].output_dir, PathBuf::from("./build"));
+    assert_eq!(configs[0].android_jar, PathBuf::from("/path/to/android.jar"));
+    assert_eq!(configs[0].incremental, Some(true));
+    
+    assert_eq!(configs[1].package_name, "com.example.app2");
+    assert_eq!(configs[1].resource_dir, PathBuf::from("./app2/res"));
+}
+
+#[test]
+fn test_multi_app_with_dependencies() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "incremental": true,
+        "apps": [
+            {
+                "resourceDir": "./base/res",
+                "manifestPath": "./base/AndroidManifest.xml",
+                "packageName": "com.example.base"
+            },
+            {
+                "resourceDir": "./feature/res",
+                "manifestPath": "./feature/AndroidManifest.xml",
+                "packageName": "com.example.feature",
+                "additionalResourceDirs": ["./base/res"]
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[0].package_name, "com.example.base");
+    assert!(configs[0].additional_resource_dirs.is_none());
+    
+    assert_eq!(configs[1].package_name, "com.example.feature");
+    assert!(configs[1].additional_resource_dirs.is_some());
+    assert_eq!(configs[1].additional_resource_dirs.as_ref().unwrap().len(), 1);
+}
+
+#[test]
+fn test_multi_app_with_app_specific_overrides() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "versionCode": 1,
+        "versionName": "1.0.0",
+        "apps": [
+            {
+                "resourceDir": "./app1/res",
+                "manifestPath": "./app1/AndroidManifest.xml",
+                "packageName": "com.example.app1"
+            },
+            {
+                "resourceDir": "./app2/res",
+                "manifestPath": "./app2/AndroidManifest.xml",
+                "packageName": "com.example.app2",
+                "versionCode": 2,
+                "versionName": "2.0.0"
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+    let configs = multi_config.into_build_configs();
+    
+    // First app uses common version
+    assert_eq!(configs[0].version_code, Some(1));
+    assert_eq!(configs[0].version_name, Some("1.0.0".to_string()));
+    
+    // Second app overrides version
+    assert_eq!(configs[1].version_code, Some(2));
+    assert_eq!(configs[1].version_name, Some("2.0.0".to_string()));
+}

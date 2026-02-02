@@ -1,22 +1,19 @@
-[
-  {
-    "resourceDir": "./app1/res",
-    "manifestPath": "./app1/AndroidManifest.xml",
-    "outputDir": "./build",
-    "packageName": "com.example.skin.app1",
-    "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
-    "incremental": true,
-    "versionCode": 1,
-    "versionName": "1.0.0"
-  },
-  {
-    "resourceDir": "./app2/res",
-    "manifestPath": "./app2/AndroidManifest.xml",
-    "outputDir": "./build",
-    "packageName": "com.example.skin.app2",
-    "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
-    "incremental": true,
-    "versionCode": 1,
-    "versionName": "1.0.0"
-  }
-]
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "resourceDir": "./app1/res",
+      "manifestPath": "./app1/AndroidManifest.xml",
+      "packageName": "com.example.skin.app1"
+    },
+    {
+      "resourceDir": "./app2/res",
+      "manifestPath": "./app2/AndroidManifest.xml",
+      "packageName": "com.example.skin.app2"
+    }
+  ]
+}

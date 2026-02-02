@@ -1,31 +1,38 @@
-# Array Config with Dependencies Example
+# Multi-App Configuration with Dependencies Example
 
-This example demonstrates using array mode configuration with dependencies between configurations. Feature1 and Feature2 both depend on Base resources.
+This example demonstrates using the object-based multi-app configuration with dependencies between configurations. Feature1 and Feature2 both depend on Base resources.
 
 ## Configuration
 
-The `asb.config.json` file contains three configurations where feature1 and feature2 depend on base:
+The `asb.config.json` file uses an object format with common fields at the top level and an `apps` array for app-specific configurations. Dependencies are declared using `additionalResourceDirs`:
 
 ```json
-[
-  {
-    "resourceDir": "./base/res",
-    "packageName": "com.example.skin.base",
-    ...
-  },
-  {
-    "resourceDir": "./feature1/res",
-    "packageName": "com.example.skin.feature1",
-    "additionalResourceDirs": ["./base/res"],
-    ...
-  },
-  {
-    "resourceDir": "./feature2/res",
-    "packageName": "com.example.skin.feature2",
-    "additionalResourceDirs": ["./base/res"],
-    ...
-  }
-]
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "resourceDir": "./base/res",
+      "manifestPath": "./base/AndroidManifest.xml",
+      "packageName": "com.example.skin.base"
+    },
+    {
+      "resourceDir": "./feature1/res",
+      "manifestPath": "./feature1/AndroidManifest.xml",
+      "packageName": "com.example.skin.feature1",
+      "additionalResourceDirs": ["./base/res"]
+    },
+    {
+      "resourceDir": "./feature2/res",
+      "manifestPath": "./feature2/AndroidManifest.xml",
+      "packageName": "com.example.skin.feature2",
+      "additionalResourceDirs": ["./base/res"]
+    }
+  ]
+}
 ```
 
 ## Build Order
@@ -33,7 +40,7 @@ The `asb.config.json` file contains three configurations where feature1 and feat
 ASB will automatically detect the dependency and build in the correct order:
 
 1. Base package (built first since others depend on it)
-2. Feature1 and Feature2 packages (built in parallel or sequentially after base)
+2. Feature1 and Feature2 packages (built sequentially after base)
 
 ## Building
 

@@ -1,6 +1,118 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// App-specific configuration in multi-app mode
+/// Contains only app-specific fields, common fields are inherited from parent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
+    /// Path to the resources directory (res/)
+    #[serde(rename = "resourceDir")]
+    pub resource_dir: PathBuf,
+
+    /// Path to the Android manifest file
+    #[serde(rename = "manifestPath")]
+    pub manifest_path: PathBuf,
+
+    /// Package name for the skin package
+    #[serde(rename = "packageName")]
+    pub package_name: String,
+
+    /// Additional resource directories (optional, for dependencies)
+    #[serde(
+        rename = "additionalResourceDirs",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub additional_resource_dirs: Option<Vec<PathBuf>>,
+
+    /// App-specific output directory override (optional)
+    #[serde(rename = "outputDir", skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<PathBuf>,
+
+    /// App-specific version code override (optional)
+    #[serde(rename = "versionCode", skip_serializing_if = "Option::is_none")]
+    pub version_code: Option<u32>,
+
+    /// App-specific version name override (optional)
+    #[serde(rename = "versionName", skip_serializing_if = "Option::is_none")]
+    pub version_name: Option<String>,
+}
+
+/// Multi-app configuration wrapper
+/// Supports multiple apps with common configuration extracted to top level
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiAppConfig {
+    /// Common output directory for all apps
+    #[serde(rename = "outputDir")]
+    pub output_dir: PathBuf,
+
+    /// Common Android platform JAR path
+    #[serde(rename = "androidJar")]
+    pub android_jar: PathBuf,
+
+    /// Common aapt2 path (optional)
+    #[serde(rename = "aapt2Path", skip_serializing_if = "Option::is_none")]
+    pub aapt2_path: Option<PathBuf>,
+
+    /// Common AAR files (optional)
+    #[serde(rename = "aarFiles", skip_serializing_if = "Option::is_none", default)]
+    pub aar_files: Option<Vec<PathBuf>>,
+
+    /// Common incremental build setting (optional)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub incremental: Option<bool>,
+
+    /// Common cache directory (optional)
+    #[serde(rename = "cacheDir", skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<PathBuf>,
+
+    /// Common version code (optional, can be overridden per app)
+    #[serde(rename = "versionCode", skip_serializing_if = "Option::is_none")]
+    pub version_code: Option<u32>,
+
+    /// Common version name (optional, can be overridden per app)
+    #[serde(rename = "versionName", skip_serializing_if = "Option::is_none")]
+    pub version_name: Option<String>,
+
+    /// Common stable IDs file (optional)
+    #[serde(rename = "stableIdsFile", skip_serializing_if = "Option::is_none")]
+    pub stable_ids_file: Option<PathBuf>,
+
+    /// Common parallel workers setting (optional)
+    #[serde(rename = "parallelWorkers", skip_serializing_if = "Option::is_none")]
+    pub parallel_workers: Option<usize>,
+
+    /// Array of app-specific configurations
+    pub apps: Vec<AppConfig>,
+}
+
+impl MultiAppConfig {
+    /// Convert multi-app config to individual BuildConfig instances
+    /// Merges common fields with app-specific fields
+    pub fn into_build_configs(self) -> Vec<BuildConfig> {
+        self.apps
+            .into_iter()
+            .map(|app| BuildConfig {
+                resource_dir: app.resource_dir,
+                manifest_path: app.manifest_path,
+                output_dir: app.output_dir.unwrap_or_else(|| self.output_dir.clone()),
+                package_name: app.package_name,
+                aapt2_path: self.aapt2_path.clone(),
+                android_jar: self.android_jar.clone(),
+                aar_files: self.aar_files.clone(),
+                incremental: self.incremental,
+                cache_dir: self.cache_dir.clone(),
+                version_code: app.version_code.or(self.version_code),
+                version_name: app.version_name.or_else(|| self.version_name.clone()),
+                additional_resource_dirs: app.additional_resource_dirs,
+                compiled_dir: None, // Will be set later if needed
+                stable_ids_file: self.stable_ids_file.clone(),
+                parallel_workers: self.parallel_workers,
+            })
+            .collect()
+    }
+}
+
 /// Configuration for building Android skin packages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildConfig {
@@ -188,7 +300,10 @@ impl BuildConfig {
     }
 
     /// Load multiple configurations from file
-    /// Supports both single object and array mode for backward compatibility
+    /// Supports three modes for backward compatibility:
+    /// 1. Multi-app object format (new): { "outputDir": "...", "androidJar": "...", "apps": [...] }
+    /// 2. Array format: [{ config1 }, { config2 }]
+    /// 3. Single object format: { "resourceDir": "...", ... }
     pub fn load_configs(config_file: Option<PathBuf>) -> anyhow::Result<Vec<Self>> {
         // Determine which config file to use
         let config_path = if let Some(path) = config_file {
@@ -205,7 +320,16 @@ impl BuildConfig {
 
         let content = std::fs::read_to_string(&config_path)?;
         
-        // Try to parse as array first
+        // Try to parse as multi-app config first (new format)
+        if let Ok(multi_config) = serde_json::from_str::<MultiAppConfig>(&content) {
+            let mut configs = multi_config.into_build_configs();
+            for config in &mut configs {
+                config.expand_paths();
+            }
+            return Ok(configs);
+        }
+        
+        // Try to parse as array (previous format)
         if let Ok(mut configs) = serde_json::from_str::<Vec<Self>>(&content) {
             for config in &mut configs {
                 config.expand_paths();
@@ -213,7 +337,7 @@ impl BuildConfig {
             return Ok(configs);
         }
         
-        // Fall back to single object (backward compatibility)
+        // Fall back to single object (original format for backward compatibility)
         let mut config: Self = serde_json::from_str(&content)?;
         config.expand_paths();
         Ok(vec![config])

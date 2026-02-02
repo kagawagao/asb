@@ -1,4 +1,4 @@
-# Array Mode Configuration - Implementation Complete
+# Multi-App Configuration - Implementation Complete
 
 ## Problem Statement (Chinese)
 
@@ -8,25 +8,31 @@
 2. 配置支持数组模式，数组的一个项即为之前的单个配置，需要兼容两种模式
 3. 在配置为数组的情况下，需要按照 additionalResources 之间的依赖关系按照顺序打包，其余并行打包
 
+**最新优化**：将公共配置项提取到顶层配置，`asb.config.json` 保持对象的形式，而非数组
+
 ## Problem Statement (English)
 
 A feature may contain multiple applications, and skin packages need to be built for each application. To address this:
 
 1. A feature should contain only one asb.config.json configuration file
-2. Configuration should support array mode, where each array item is a previous single configuration, with both modes needing to be compatible
-3. When the configuration is an array, packaging should be done in order based on the dependency relationship between additionalResourceDirs, with independent ones packaged in parallel
+2. Configuration should support multiple apps with common configuration extracted to top level
+3. Packaging should be done in order based on the dependency relationship between additionalResourceDirs, with independent ones packaged in parallel
+
+**Latest optimization**: Extract common configuration items to top-level, keeping `asb.config.json` as an object (not array)
 
 ## Solution Implemented
 
 ### 1. Single Configuration File ✅
 - One `asb.config.json` file per feature/project
-- Supports both single object and array of objects
-- Backward compatible with existing single object configurations
+- Supports three modes: multi-app object, array, and single object
+- Backward compatible with all existing configurations
 
-### 2. Array Mode Support ✅
-- Parse configuration as array if it's an array, otherwise treat as single object
-- Each array item has the same structure as the previous single configuration
-- Fully backward compatible - existing projects continue to work without changes
+### 2. Multi-App Object Format ✅ (Recommended)
+- Configuration file remains an **object** (not array at top level)
+- Common fields extracted to top level (outputDir, androidJar, incremental, etc.)
+- Individual apps defined in `apps` array with only app-specific fields
+- Eliminates duplication and improves maintainability
+- Still supports legacy array format for backward compatibility
 
 ### 3. Dependency-Based Build Order ✅
 - Analyzes `additionalResourceDirs` to detect dependencies between configurations
@@ -37,7 +43,45 @@ A feature may contain multiple applications, and skin packages need to be built 
 
 ## Technical Implementation
 
-### New Module: `src/dependency.rs`
+### New Structures: `src/types.rs`
+```rust
+/// Multi-app configuration wrapper with common fields at top level
+pub struct MultiAppConfig {
+    pub output_dir: PathBuf,
+    pub android_jar: PathBuf,
+    pub incremental: Option<bool>,
+    pub version_code: Option<u32>,
+    pub version_name: Option<String>,
+    // ... other common fields
+    pub apps: Vec<AppConfig>,
+}
+
+/// App-specific configuration (only unique fields per app)
+pub struct AppConfig {
+    pub resource_dir: PathBuf,
+    pub manifest_path: PathBuf,
+    pub package_name: String,
+    pub additional_resource_dirs: Option<Vec<PathBuf>>,
+    // ... optional overrides
+}
+```
+
+### Enhanced: `src/types.rs`
+```rust
+/// Load multiple configurations from file
+/// Supports three modes:
+/// 1. Multi-app object (new): { "outputDir": "...", "apps": [...] }
+/// 2. Array: [{ config1 }, { config2 }]  
+/// 3. Single object: { "resourceDir": "...", ... }
+pub fn load_configs(config_file: Option<PathBuf>) -> Result<Vec<Self>>
+```
+
+- Tries to parse as multi-app object first (new format)
+- Falls back to array format (previous format)
+- Finally falls back to single object (original format)
+- Expands environment variables in paths
+
+### Dependency Resolution: `src/dependency.rs`
 ```rust
 /// Group configurations by their dependencies
 pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) 
@@ -48,26 +92,77 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>)
 - Returns independent configs and dependency groups
 - Uses topological sort for deterministic ordering
 
-### Enhanced: `src/types.rs`
-```rust
-/// Load multiple configurations from file
-pub fn load_configs(config_file: Option<PathBuf>) -> Result<Vec<Self>>
-```
-
-- Tries to parse as array first
-- Falls back to single object for backward compatibility
-- Expands environment variables in paths
-
-### Updated: `src/cli.rs`
+### Build Execution: `src/cli.rs`
 - Enhanced build command to handle multiple configurations
 - Parallel execution for independent configs
 - Sequential execution for dependent configs
-- Unique compiled directories for each config in array mode
+- Unique compiled directories for each config in multi-app mode
 - Comprehensive build summary with individual results
 
 ## Usage Examples
 
-### Example 1: Single Config (Backward Compatible)
+### Example 1: Multi-App Object Format (Recommended)
+```json
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "resourceDir": "./app1/res",
+      "manifestPath": "./app1/AndroidManifest.xml",
+      "packageName": "com.example.skin.app1"
+    },
+    {
+      "resourceDir": "./app2/res",
+      "manifestPath": "./app2/AndroidManifest.xml",
+      "packageName": "com.example.skin.app2"
+    }
+  ]
+}
+```
+
+**Benefits:**
+- ✅ Config file remains an **object** (not array)
+- ✅ Common fields defined once (no duplication)
+- ✅ Each app only specifies unique fields
+- ✅ Easy to maintain and extend
+
+Result: Both apps built in parallel (~0.12s total)
+
+### Example 2: Multi-App With Dependencies
+```json
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "apps": [
+    {
+      "resourceDir": "./base/res",
+      "manifestPath": "./base/AndroidManifest.xml",
+      "packageName": "com.example.skin.base"
+    },
+    {
+      "resourceDir": "./feature1/res",
+      "manifestPath": "./feature1/AndroidManifest.xml",
+      "packageName": "com.example.skin.feature1",
+      "additionalResourceDirs": ["./base/res"]
+    },
+    {
+      "resourceDir": "./feature2/res",
+      "manifestPath": "./feature2/AndroidManifest.xml",
+      "packageName": "com.example.skin.feature2",
+      "additionalResourceDirs": ["./base/res"]
+    }
+  ]
+}
+```
+
+Result: Base built first, then feature1 and feature2 in sequence (~0.27s total)
+
+### Example 3: Single Config (Backward Compatible)
 ```json
 {
   "resourceDir": "./res",
@@ -81,7 +176,7 @@ pub fn load_configs(config_file: Option<PathBuf>) -> Result<Vec<Self>>
 }
 ```
 
-### Example 2: Array Config Without Dependencies (Parallel Build)
+### Example 4: Array Format (Legacy, Still Supported)
 ```json
 [
   {
@@ -97,31 +192,6 @@ pub fn load_configs(config_file: Option<PathBuf>) -> Result<Vec<Self>>
     "outputDir": "./build",
     "packageName": "com.example.skin.app2",
     "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar"
-  }
-]
-```
-
-Result: Both apps built in parallel (~0.12s total)
-
-### Example 3: Array Config With Dependencies (Sequential Build)
-```json
-[
-  {
-    "resourceDir": "./base/res",
-    "packageName": "com.example.skin.base",
-    ...
-  },
-  {
-    "resourceDir": "./feature1/res",
-    "packageName": "com.example.skin.feature1",
-    "additionalResourceDirs": ["./base/res"],
-    ...
-  },
-  {
-    "resourceDir": "./feature2/res",
-    "packageName": "com.example.skin.feature2",
-    "additionalResourceDirs": ["./base/res"],
-    ...
   }
 ]
 ```

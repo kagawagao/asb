@@ -1,29 +1,38 @@
-# Array Config Example
+# Multi-App Configuration Example
 
-This example demonstrates using array mode configuration in ASB, where multiple skin packages are built from a single `asb.config.json` file.
+This example demonstrates using the new object-based multi-app configuration format in ASB, where multiple skin packages are built from a single `asb.config.json` file with common configuration extracted to the top level.
 
 ## Configuration
 
-The `asb.config.json` file is an array of build configurations:
+The `asb.config.json` file uses an object format with common fields at the top level and an `apps` array for app-specific configurations:
 
 ```json
-[
-  {
-    "resourceDir": "./app1/res",
-    "manifestPath": "./app1/AndroidManifest.xml",
-    "outputDir": "./build",
-    "packageName": "com.example.skin.app1",
-    ...
-  },
-  {
-    "resourceDir": "./app2/res",
-    "manifestPath": "./app2/AndroidManifest.xml",
-    "outputDir": "./build",
-    "packageName": "com.example.skin.app2",
-    ...
-  }
-]
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "resourceDir": "./app1/res",
+      "manifestPath": "./app1/AndroidManifest.xml",
+      "packageName": "com.example.skin.app1"
+    },
+    {
+      "resourceDir": "./app2/res",
+      "manifestPath": "./app2/AndroidManifest.xml",
+      "packageName": "com.example.skin.app2"
+    }
+  ]
+}
 ```
+
+## Benefits
+
+- **No Duplication**: Common configuration (outputDir, androidJar, incremental, etc.) is defined once at the top level
+- **Clean Structure**: Each app only needs to specify what's unique (resourceDir, manifestPath, packageName)
+- **Object Format**: The config file remains an object (not an array), making it easier to extend with additional top-level settings
 
 ## Building
 
