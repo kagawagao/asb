@@ -258,4 +258,203 @@ mod tests {
         assert_eq!(independent.len(), 2);
         assert_eq!(dependent.len(), 0);
     }
+
+    #[test]
+    fn test_dependent_configs() {
+        // Base config
+        let base_config = BuildConfig {
+            resource_dir: PathBuf::from("./base/res"),
+            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.base".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        // Feature config that depends on base
+        let feature_config = BuildConfig {
+            resource_dir: PathBuf::from("./feature/res"),
+            manifest_path: PathBuf::from("./feature/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.feature".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        let configs = vec![base_config, feature_config];
+        let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
+
+        // Should have dependency group
+        assert_eq!(independent.len(), 0);
+        assert_eq!(dependent.len(), 1);
+        assert_eq!(dependent[0].len(), 2);
+
+        // Base should come before feature in the sorted order
+        let sorted_indices: Vec<usize> = dependent[0].iter().map(|c| c.index).collect();
+        let base_idx = sorted_indices.iter().position(|&i| i == 0).unwrap();
+        let feature_idx = sorted_indices.iter().position(|&i| i == 1).unwrap();
+        assert!(base_idx < feature_idx, "Base should be built before feature");
+    }
+
+    #[test]
+    fn test_multiple_features_depending_on_base() {
+        // Base config
+        let base_config = BuildConfig {
+            resource_dir: PathBuf::from("./base/res"),
+            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.base".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        // Feature1 depends on base
+        let feature1_config = BuildConfig {
+            resource_dir: PathBuf::from("./feature1/res"),
+            manifest_path: PathBuf::from("./feature1/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.feature1".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        // Feature2 also depends on base
+        let feature2_config = BuildConfig {
+            resource_dir: PathBuf::from("./feature2/res"),
+            manifest_path: PathBuf::from("./feature2/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.feature2".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        let configs = vec![base_config, feature1_config, feature2_config];
+        let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
+
+        // All should be in dependency group
+        assert_eq!(independent.len(), 0);
+        assert_eq!(dependent.len(), 1);
+        assert_eq!(dependent[0].len(), 3);
+
+        // Base should be first
+        let sorted_indices: Vec<usize> = dependent[0].iter().map(|c| c.index).collect();
+        assert_eq!(sorted_indices[0], 0, "Base should be built first");
+    }
+
+    #[test]
+    fn test_mixed_independent_and_dependent_configs() {
+        // Independent config
+        let independent_config = BuildConfig {
+            resource_dir: PathBuf::from("./independent/res"),
+            manifest_path: PathBuf::from("./independent/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.independent".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        // Base config
+        let base_config = BuildConfig {
+            resource_dir: PathBuf::from("./base/res"),
+            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.base".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        // Feature depends on base
+        let feature_config = BuildConfig {
+            resource_dir: PathBuf::from("./feature/res"),
+            manifest_path: PathBuf::from("./feature/AndroidManifest.xml"),
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.feature".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+        };
+
+        let configs = vec![independent_config, base_config, feature_config];
+        let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
+
+        // Should have 1 independent and 1 dependency group with 2 configs
+        assert_eq!(independent.len(), 1);
+        assert_eq!(dependent.len(), 1);
+        assert_eq!(dependent[0].len(), 2);
+
+        // Verify independent config
+        assert_eq!(independent[0].index, 0);
+        assert_eq!(independent[0].config.package_name, "com.example.independent");
+    }
 }

@@ -220,6 +220,84 @@ impl BuildConfig {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_single_config() {
+        let json = r#"{
+            "resourceDir": "./res",
+            "manifestPath": "./AndroidManifest.xml",
+            "outputDir": "./build",
+            "packageName": "com.example.app",
+            "androidJar": "/path/to/android.jar"
+        }"#;
+
+        let configs: Vec<BuildConfig> = serde_json::from_str(json)
+            .or_else(|_| serde_json::from_str::<BuildConfig>(json).map(|c| vec![c]))
+            .unwrap();
+
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].package_name, "com.example.app");
+    }
+
+    #[test]
+    fn test_load_array_config() {
+        let json = r#"[
+            {
+                "resourceDir": "./app1/res",
+                "manifestPath": "./app1/AndroidManifest.xml",
+                "outputDir": "./build",
+                "packageName": "com.example.app1",
+                "androidJar": "/path/to/android.jar"
+            },
+            {
+                "resourceDir": "./app2/res",
+                "manifestPath": "./app2/AndroidManifest.xml",
+                "outputDir": "./build",
+                "packageName": "com.example.app2",
+                "androidJar": "/path/to/android.jar"
+            }
+        ]"#;
+
+        let configs: Vec<BuildConfig> = serde_json::from_str(json).unwrap();
+
+        assert_eq!(configs.len(), 2);
+        assert_eq!(configs[0].package_name, "com.example.app1");
+        assert_eq!(configs[1].package_name, "com.example.app2");
+    }
+
+    #[test]
+    fn test_load_array_config_with_dependencies() {
+        let json = r#"[
+            {
+                "resourceDir": "./base/res",
+                "manifestPath": "./base/AndroidManifest.xml",
+                "outputDir": "./build",
+                "packageName": "com.example.base",
+                "androidJar": "/path/to/android.jar"
+            },
+            {
+                "resourceDir": "./feature/res",
+                "manifestPath": "./feature/AndroidManifest.xml",
+                "outputDir": "./build",
+                "packageName": "com.example.feature",
+                "androidJar": "/path/to/android.jar",
+                "additionalResourceDirs": ["./base/res"]
+            }
+        ]"#;
+
+        let configs: Vec<BuildConfig> = serde_json::from_str(json).unwrap();
+
+        assert_eq!(configs.len(), 2);
+        assert_eq!(configs[0].package_name, "com.example.base");
+        assert_eq!(configs[1].package_name, "com.example.feature");
+        assert!(configs[1].additional_resource_dirs.is_some());
+        assert_eq!(configs[1].additional_resource_dirs.as_ref().unwrap().len(), 1);
+    }
+}
+
 /// Result of aapt2 compile operation
 #[derive(Debug)]
 pub struct CompileResult {
