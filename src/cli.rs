@@ -323,10 +323,10 @@ impl Cli {
             }
 
             // Build dependent groups sequentially
-            for (group_idx, group) in dependent_groups.into_iter().enumerate() {
+            for (group_number, group) in dependent_groups.into_iter().enumerate() {
                 info!(
                     "Building dependency group {} with {} configs sequentially...",
-                    group_idx + 1,
+                    group_number + 1,
                     group.len()
                 );
 

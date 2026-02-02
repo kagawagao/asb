@@ -11,9 +11,18 @@ pub struct ConfigWithIndex {
     pub config: BuildConfig,
 }
 
-/// Group configurations by their dependencies
-/// Returns (independent_configs, dependency_groups)
-/// where dependency_groups is a Vec of Vec, each inner Vec should be built sequentially
+/// Group configurations by their dependencies based on shared resource directories
+/// 
+/// Analyzes the `additionalResourceDirs` field to detect dependencies between configurations.
+/// A configuration depends on another if it references a resource directory that is the main
+/// resource directory of another configuration.
+/// 
+/// # Returns
+/// 
+/// A tuple of:
+/// - `independent_configs`: Configurations with no dependencies that can be built in parallel
+/// - `dependency_groups`: Groups of dependent configurations that must be built sequentially
+///   within each group (in topological order), though different groups can be processed in parallel
 pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) -> Result<(Vec<ConfigWithIndex>, Vec<Vec<ConfigWithIndex>>)> {
     if configs.is_empty() {
         return Ok((vec![], vec![]));
@@ -109,7 +118,20 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) -> Result<(Vec<C
     Ok((independent, dependent_groups))
 }
 
-/// Normalize a path to a string for comparison
+/// Normalize a path to a string for comparison purposes
+/// 
+/// Attempts to convert the path to an absolute canonical path to ensure that different
+/// representations of the same path (e.g., relative vs absolute, with/without trailing slashes)
+/// are treated as equal. If canonicalization fails (e.g., path doesn't exist yet), falls back
+/// to normalizing the string representation by replacing backslashes with forward slashes.
+/// 
+/// # Arguments
+/// 
+/// * `path` - The path to normalize
+/// 
+/// # Returns
+/// 
+/// A normalized string representation of the path suitable for comparison
 fn normalize_path(path: &PathBuf) -> String {
     // Convert to absolute path if possible, otherwise use as-is
     if let Ok(abs_path) = std::fs::canonicalize(path) {
@@ -120,8 +142,22 @@ fn normalize_path(path: &PathBuf) -> String {
     }
 }
 
-/// Perform topological sort on the dependency graph
-/// Returns the sorted indices
+/// Perform topological sort on the dependency graph using Kahn's algorithm
+/// 
+/// Topological sorting arranges configurations so that dependencies are always built before
+/// their dependents. Uses a breadth-first approach with a queue (VecDeque) for deterministic
+/// ordering. Detects circular dependencies and returns an error if found.
+/// 
+/// # Arguments
+/// 
+/// * `num_configs` - Total number of configurations to sort
+/// * `dependencies` - A map where keys are dependent config indices and values are vectors of
+///   the config indices they depend on (i.e., `dependent -> [dependencies]`)
+/// 
+/// # Returns
+/// 
+/// A vector of configuration indices in topological order (dependencies before dependents),
+/// or an error if a circular dependency is detected
 fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>>) -> Result<Vec<usize>> {
     let mut in_degree = vec![0; num_configs];
     let mut adj_list: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -137,13 +173,13 @@ fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>
     }
     
     // Find all nodes with in-degree 0 (no dependencies)
-    let mut queue: Vec<usize> = (0..num_configs)
+    let mut queue: std::collections::VecDeque<usize> = (0..num_configs)
         .filter(|&i| in_degree[i] == 0)
         .collect();
     
     let mut sorted = Vec::new();
     
-    while let Some(node) = queue.pop() {
+    while let Some(node) = queue.pop_front() {
         sorted.push(node);
         
         // Reduce in-degree for all dependents
@@ -151,7 +187,7 @@ fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>
             for &dependent in dependents {
                 in_degree[dependent] -= 1;
                 if in_degree[dependent] == 0 {
-                    queue.push(dependent);
+                    queue.push_back(dependent);
                 }
             }
         }
