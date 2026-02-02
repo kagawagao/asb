@@ -188,28 +188,6 @@ impl BuildConfig {
     }
 }
 
-/// Multi-module configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiModuleConfig {
-    /// List of module configurations
-    pub modules: Vec<ModuleConfig>,
-
-    /// Output file for merged skin package
-    #[serde(rename = "mergedOutput")]
-    pub merged_output: PathBuf,
-}
-
-/// Individual module configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModuleConfig {
-    /// Module name
-    pub name: String,
-
-    /// Build configuration for this module
-    #[serde(flatten)]
-    pub config: BuildConfig,
-}
-
 /// Result of aapt2 compile operation
 #[derive(Debug)]
 pub struct CompileResult {

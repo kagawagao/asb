@@ -3,7 +3,6 @@ mod aar;
 mod builder;
 mod cache;
 mod cli;
-mod merge;
 mod types;
 
 use anyhow::Result;

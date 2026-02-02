@@ -6,8 +6,7 @@ use tracing::{error, info};
 
 use crate::aapt2::Aapt2;
 use crate::builder::SkinBuilder;
-use crate::merge::{ModuleSkinPackage, SkinMerger};
-use crate::types::{BuildConfig, ModuleConfig, MultiModuleConfig};
+use crate::types::BuildConfig;
 
 #[derive(Parser)]
 #[command(name = "asb")]
@@ -75,13 +74,6 @@ pub enum Commands {
         workers: Option<usize>,
     },
 
-    /// Build multiple modules and merge them
-    BuildMulti {
-        /// Path to multi-module configuration file
-        #[arg(short, long)]
-        config: PathBuf,
-    },
-
     /// Clean build artifacts
     Clean {
         /// Path to configuration file
@@ -143,7 +135,6 @@ impl Cli {
                 )
                 .await
             }
-            Commands::BuildMulti { config } => Self::run_build_multi(config).await,
             Commands::Clean { config, output } => Self::run_clean(config, output),
             Commands::Version { aapt2 } => Self::run_version(aapt2),
             Commands::Init { dir } => Self::run_init(dir),
@@ -235,64 +226,6 @@ impl Cli {
             }
             std::process::exit(1);
         }
-
-        Ok(())
-    }
-
-    async fn run_build_multi(config_path: PathBuf) -> Result<()> {
-        let content = std::fs::read_to_string(&config_path)?;
-        let multi_config: MultiModuleConfig = serde_json::from_str(&content)?;
-
-        println!(
-            "{}",
-            format!("\nBuilding {} modules...\n", multi_config.modules.len())
-                .blue()
-                .bold()
-        );
-
-        let start_time = std::time::Instant::now();
-        let mut packages = Vec::new();
-
-        for module_config in &multi_config.modules {
-            info!("Building module: {}", module_config.name);
-            println!("\n{}", format!("Module: {}", module_config.name).cyan());
-
-            // Clone and expand environment variables in the config
-            let mut config = module_config.config.clone();
-            config.expand_paths();
-            
-            let mut builder = SkinBuilder::new(config)?;
-            let result = builder.build().await?;
-
-            if !result.success {
-                error!("Failed to build module: {}", module_config.name);
-                for error in &result.errors {
-                    error!("  - {}", error);
-                }
-                std::process::exit(1);
-            }
-
-            if let Some(apk_path) = result.apk_path {
-                packages.push(ModuleSkinPackage {
-                    module_name: module_config.name.clone(),
-                    apk_path,
-                });
-            }
-        }
-
-        // Merge packages
-        println!("\n{}", "Merging module packages...".blue().bold());
-        SkinMerger::merge_packages(&packages, &multi_config.merged_output)?;
-        
-        let elapsed = start_time.elapsed();
-
-        println!("{}", "\n✓ Multi-module build completed!".green().bold());
-        println!(
-            "  {}: {}",
-            "Merged output".cyan(),
-            multi_config.merged_output.display()
-        );
-        println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
 
         Ok(())
     }

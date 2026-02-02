@@ -79,20 +79,31 @@ impl SkinBuilder {
             resource_dirs.extend(additional_dirs.clone());
         }
 
-        // Compile resources
+        // Compile resources - compile each directory separately to avoid file name conflicts
         info!("Compiling resources from {} directories...", resource_dirs.len());
-        let mut flat_files = Vec::new();
+        let mut all_flat_files = Vec::new();
         let mut missing_dirs = Vec::new();
+        let mut valid_resource_dirs = Vec::new();
 
-        for res_dir in &resource_dirs {
+        for (idx, res_dir) in resource_dirs.iter().enumerate() {
             if res_dir.exists() {
-                let result = self.compile_resource_dir(res_dir, &compiled_dir)?;
-                flat_files.extend(result);
+                // Use a separate compiled subdirectory for each resource directory to avoid flat file conflicts
+                let module_compiled_dir = compiled_dir.join(format!("module_{}", idx));
+                std::fs::create_dir_all(&module_compiled_dir)?;
+                
+                let files = self.find_resource_files(res_dir)?;
+                if !files.is_empty() {
+                    let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
+                    all_flat_files.extend(flat_files);
+                }
+                valid_resource_dirs.push(res_dir.clone());
             } else {
                 info!("Resource directory not found: {}", res_dir.display());
                 missing_dirs.push(res_dir.display().to_string());
             }
         }
+
+        let flat_files = all_flat_files;
 
         if flat_files.is_empty() {
             AarExtractor::cleanup_aars(&aar_infos)?;
@@ -131,8 +142,8 @@ impl SkinBuilder {
         // Link resources into skin package
         info!("Linking resources...");
         let output_apk = self.config.output_dir.join(format!(
-            "skin-{}.skin",
-            self.config.package_name.replace('.', "_")
+            "{}.skin",
+            self.config.package_name
         ));
 
         let link_result = self.aapt2.link(
@@ -164,7 +175,7 @@ impl SkinBuilder {
 
         // Add raw resource files to the skin package
         info!("Adding resource files to skin package...");
-        self.add_resources_to_apk(&output_apk, &resource_dirs)?;
+        self.add_resources_to_apk(&output_apk, &valid_resource_dirs)?;
 
         info!("Build completed successfully!");
         Ok(BuildResult {
@@ -264,6 +275,102 @@ impl SkinBuilder {
         std::fs::rename(&temp_apk, apk_path)?;
 
         Ok(())
+    }
+
+    /// Compile all resource files from multiple directories
+    fn compile_all_resources(&mut self, resource_files: &[PathBuf], compiled_dir: &Path) -> Result<Vec<PathBuf>> {
+        // If incremental build is disabled or no cache, compile all files together
+        if self.cache.is_none() {
+            // Clear compiled directory to avoid stale flat files
+            if compiled_dir.exists() {
+                std::fs::remove_dir_all(compiled_dir)?;
+            }
+            std::fs::create_dir_all(compiled_dir)?;
+            
+            // Compile all files in parallel
+            let result = self.aapt2.compile_files_parallel(resource_files, compiled_dir)?;
+            if !result.success {
+                anyhow::bail!("Compilation failed: {:?}", result.errors);
+            }
+            return Ok(result.flat_files);
+        }
+
+        // For incremental builds, check each file individually
+        debug!("Found {} resource files", resource_files.len());
+
+        // Set number of parallel workers (note: this only works if not already initialized)
+        if let Some(workers) = self.config.parallel_workers {
+            if rayon::ThreadPoolBuilder::new()
+                .num_threads(workers)
+                .build_global()
+                .is_err()
+            {
+                debug!("Worker thread count already set, using existing pool");
+            }
+        }
+
+        let cache = self.cache.as_mut().unwrap();
+        let aapt2 = &self.aapt2;
+
+        // First, determine serially which files need recompilation and which can use cache
+        let mut to_compile: Vec<PathBuf> = Vec::new();
+        let mut cached_results: Vec<(PathBuf, PathBuf)> = Vec::new();
+
+        for resource_file in resource_files {
+            if cache.needs_recompile(resource_file).unwrap_or(true) {
+                // Need to recompile
+                to_compile.push(resource_file.clone());
+            } else {
+                // Use cached flat file if available
+                debug!("Using cached: {}", resource_file.display());
+                if let Some(flat) = cache.get_cached_flat_file(resource_file) {
+                    cached_results.push((resource_file.clone(), flat));
+                }
+            }
+        }
+
+        // Process recompilations in parallel
+        let flat_files_results = if !to_compile.is_empty() {
+            debug!("Recompiling {} files...", to_compile.len());
+            aapt2.compile_files_parallel(&to_compile, compiled_dir)?
+        } else {
+            CompileResult {
+                success: true,
+                flat_files: vec![],
+                errors: vec![],
+            }
+        };
+
+        if !flat_files_results.success {
+            anyhow::bail!("Parallel compilation failed: {:?}", flat_files_results.errors);
+        }
+
+        let mut flat_files = Vec::new();
+
+        // First, handle newly compiled results
+        for (i, resource_file) in to_compile.iter().enumerate() {
+            if i < flat_files_results.flat_files.len() {
+                let flat_file = &flat_files_results.flat_files[i];
+                cache.update_entry(resource_file, flat_file)?;
+                if flat_file.exists() {
+                    flat_files.push(flat_file.clone());
+                }
+            }
+        }
+
+        // Then, handle cached results
+        for (resource_file, flat_file) in cached_results {
+            cache.update_entry(&resource_file, &flat_file)?;
+            if flat_file.exists() {
+                flat_files.push(flat_file);
+            }
+        }
+
+        // Deduplicate flat files to avoid passing the same file multiple times to link
+        flat_files.sort();
+        flat_files.dedup();
+
+        Ok(flat_files)
     }
 
     /// Compile a resource directory

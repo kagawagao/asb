@@ -1,6 +1,6 @@
-# Full Android Multi-Module Project Example
+# Full Android Application Example
 
-This is a comprehensive example demonstrating how to use ASB with a realistic Android multi-module project structure.
+This is a comprehensive example demonstrating how to use ASB with a realistic Android application that includes multiple feature modules.
 
 ## Project Structure
 
@@ -17,37 +17,34 @@ full-android-app/
 │   │       └── activity_main.xml
 │   └── AndroidManifest.xml
 │
-├── feature-home/           # Home feature module
-│   ├── res/
-│   │   ├── values/
-│   │   │   ├── colors.xml
-│   │   │   └── strings.xml
-│   │   └── layout/
-│   │       └── fragment_home.xml
-│   └── AndroidManifest.xml
+├── feature-home/           # Home feature module resources
+│   └── res/
+│       ├── values/
+│       │   ├── colors.xml
+│       │   └── strings.xml
+│       └── layout/
+│           └── fragment_home.xml
 │
-├── feature-profile/        # Profile feature module
-│   ├── res/
-│   │   ├── values/
-│   │   │   ├── colors.xml
-│   │   │   └── strings.xml
-│   │   └── layout/
-│   │       └── fragment_profile.xml
-│   └── AndroidManifest.xml
+├── feature-profile/        # Profile feature module resources
+│   └── res/
+│       ├── values/
+│       │   ├── colors.xml
+│       │   └── strings.xml
+│       └── layout/
+│           └── fragment_profile.xml
 │
-├── feature-settings/       # Settings feature module
-│   ├── res/
-│   │   ├── values/
-│   │   │   ├── colors.xml
-│   │   │   └── strings.xml
-│   │   └── layout/
-│   │       └── fragment_settings.xml
-│   └── AndroidManifest.xml
-│
-└── asb.multi-module.json  # Multi-module configuration
+└── feature-settings/       # Settings feature module resources
+    └── res/
+        ├── values/
+        │   ├── colors.xml
+        │   └── strings.xml
+        └── layout/
+            └── fragment_settings.xml
 ```
 
-## Building the Project
+## Building the Application
+
+ASB builds skin packages at the application level, automatically including resources from all feature modules and their dependencies.
 
 ### 1. Build from Root
 
@@ -58,63 +55,60 @@ cd /path/to/asb
 cargo build --release
 ```
 
-### 2. Build Individual Modules
+### 2. Build Application Skin Package
 
-You can build each module separately:
+Build the entire application with all its resources:
 
 ```bash
-# Build app module
 cd examples/full-android-app
 ../../target/release/asb build \
   --resource-dir app/res \
   --manifest app/AndroidManifest.xml \
-  --output build/app \
+  --output build \
   --package com.example.skinapp.app \
-  --android-jar $ANDROID_HOME/platforms/android-30/android.jar
-
-# Build feature-home module
-../../target/release/asb build \
-  --resource-dir feature-home/res \
-  --manifest feature-home/AndroidManifest.xml \
-  --output build/feature-home \
-  --package com.example.skinapp.home \
-  --android-jar $ANDROID_HOME/platforms/android-30/android.jar
+  --android-jar $ANDROID_HOME/platforms/android-34/android.jar
 ```
 
-### 3. Build All Modules and Merge
+This creates `build/com.example.skinapp.app.skin` containing:
+- All resources from the app module
+- Automatically indexed dependent resources from feature modules
+- resources.arsc (compiled resources)
+- AndroidManifest.xml
+- All XML resource files (layouts, values, etc.)
 
-Use the multi-module configuration to build and merge all modules:
+### 3. Using Configuration File
+
+Create an `asb.config.json` for the app:
+
+```json
+{
+  "resourceDir": "./app/res",
+  "manifestPath": "./app/AndroidManifest.xml",
+  "outputDir": "./build",
+  "packageName": "com.example.skinapp.app",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "additionalResourceDirs": [
+    "./feature-home/res",
+    "./feature-profile/res",
+    "./feature-settings/res"
+  ],
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0"
+}
+```
+
+Then build with:
 
 ```bash
-cd examples/full-android-app
-../../target/release/asb build-multi --config asb.multi-module.json
-```
-
-This will:
-1. Build each module into separate APKs
-2. Merge all modules into a single file: `build/merged-skin.skin`
-
-### 4. Using the Merged Skin Package
-
-The merged skin package can be distributed and extracted by your Android app:
-
-```
-ASB_MERGED_V1
-4
-app|<size>
-<binary APK data>
-feature-home|<size>
-<binary APK data>
-feature-profile|<size>
-<binary APK data>
-feature-settings|<size>
-<binary APK data>
+../../target/release/asb build --config asb.config.json
 ```
 
 ## Features Demonstrated
 
-- **Multi-module architecture**: Separate modules for different features
-- **Resource organization**: Each module has its own resources
+- **Application-scoped packaging**: Build complete skin packages per application
+- **Automatic dependency resolution**: Resources from all modules are automatically included
+- **Resource organization**: Modular resource structure
 - **Color theming**: Module-specific color schemes
 - **Layouts**: Module-specific UI layouts
 - **Stable IDs**: Consistent resource IDs across builds (add `--stable-ids` flag)
@@ -128,8 +122,8 @@ feature-settings|<size>
 Create a `stable-ids.txt` file to maintain consistent resource IDs:
 
 ```bash
-../../target/release/asb build-multi \
-  --config asb.multi-module.json \
+../../target/release/asb build \
+  --config asb.config.json \
   --stable-ids stable-ids.txt
 ```
 
@@ -138,34 +132,55 @@ Create a `stable-ids.txt` file to maintain consistent resource IDs:
 Control parallel compilation threads:
 
 ```bash
-../../target/release/asb build-multi \
-  --config asb.multi-module.json \
+../../target/release/asb build \
+  --config asb.config.json \
   --workers 16
 ```
 
-### Incremental Builds
+### With Third-Party Dependencies
 
-Enable caching for faster subsequent builds:
+If your application references resources from AAR libraries:
 
 ```json
 {
-  "modules": [...],
-  "incremental": true,
-  "mergedOutput": "./build/merged-skin.skin"
+  "resourceDir": "./app/res",
+  "manifestPath": "./app/AndroidManifest.xml",
+  "outputDir": "./build",
+  "packageName": "com.example.skinapp.app",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "aarFiles": [
+    "./libs/support-lib.aar",
+    "./libs/material-components.aar"
+  ]
 }
 ```
 
+The build process automatically:
+- Extracts AAR resources
+- Includes referenced resources in the skin package
+- Handles resource ID conflicts properly
+
+## Output File Naming
+
+The output skin package is named using the application's package name:
+
+- Package: `com.example.skinapp.app`
+- Output: `com.example.skinapp.app.skin`
+
+This makes it easy to identify which application each skin package belongs to.
+
 ## Use Cases
 
-1. **Dynamic Feature Modules**: Build skin packages for Android Dynamic Feature Modules
-2. **Plugin Systems**: Create skinnable plugins for modular apps
-3. **Hot Updates**: Update app theming without reinstalling
+1. **Modular Applications**: Build skins for applications with multiple feature modules
+2. **Dynamic Theming**: Update app theming without reinstalling
+3. **Hot Updates**: Distribute theme updates over-the-air
 4. **A/B Testing**: Distribute different themes to different user groups
 5. **White Labeling**: Quickly rebrand apps for different clients
 
 ## Notes
 
 - Ensure `ANDROID_HOME` environment variable is set
-- Each module should have a unique package name
-- Resource names should be unique across modules or properly namespaced
-- The merged output format is optimized for efficient extraction
+- The application package name determines the output filename
+- All referenced resources (from feature modules, AARs, etc.) are automatically included
+- Resource names should be unique or properly namespaced
+- The skin package format is optimized for efficient loading in Android
