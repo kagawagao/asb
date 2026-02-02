@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Profile Feature Strings -->
+    <string name="profile_title">Profile</string>
+    <string name="profile_name">User Name</string>
+    <string name="profile_email">Email Address</string>
+    <string name="profile_phone">Phone Number</string>
+    <string name="profile_bio">Biography</string>
+    <string name="profile_edit">Edit Profile</string>
+    <string name="profile_logout">Logout</string>
+    <string name="profile_stats">Statistics</string>
+    <string name="profile_posts">Posts</string>
+    <string name="profile_followers">Followers</string>
+    <string name="profile_following">Following</string>
+</resources>

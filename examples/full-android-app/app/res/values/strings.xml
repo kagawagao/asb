@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Name -->
+    <string name="app_name">Skin Demo App</string>
+    
+    <!-- Main Activity -->
+    <string name="main_title">Welcome to Skin Demo</string>
+    <string name="main_description">This app demonstrates multi-module skin packaging</string>
+    
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_profile">Profile</string>
+    <string name="nav_settings">Settings</string>
+    
+    <!-- Common Actions -->
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Edit</string>
+    
+    <!-- Messages -->
+    <string name="msg_loading">Loading…</string>
+    <string name="msg_error">An error occurred</string>
+    <string name="msg_success">Success!</string>
+</resources>

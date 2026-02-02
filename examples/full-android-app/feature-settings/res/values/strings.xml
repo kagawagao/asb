@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings Feature Strings -->
+    <string name="settings_title">Settings</string>
+    
+    <!-- Account Section -->
+    <string name="settings_account">Account</string>
+    <string name="settings_change_password">Change Password</string>
+    <string name="settings_privacy">Privacy Settings</string>
+    
+    <!-- Notifications Section -->
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_enable_notifications">Enable Notifications</string>
+    <string name="settings_email_notifications">Email Notifications</string>
+    <string name="settings_push_notifications">Push Notifications</string>
+    
+    <!-- Appearance Section -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_dark_mode">Dark Mode</string>
+    <string name="settings_language">Language</string>
+    
+    <!-- About Section -->
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_terms">Terms of Service</string>
+    <string name="settings_privacy_policy">Privacy Policy</string>
+    
+    <!-- Actions -->
+    <string name="settings_clear_cache">Clear Cache</string>
+    <string name="settings_reset">Reset to Defaults</string>
+</resources>

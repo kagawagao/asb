@@ -1,0 +1,51 @@
+[package]
+name = "asb"
+version = "2.0.0"
+edition = "2021"
+authors = ["Jingsong Gao"]
+license = "MIT"
+description = "Android Skin Builder - A high-performance tool for packaging Android resource-only skin packages using aapt2"
+repository = "https://github.com/kagawagao/asb"
+keywords = ["android", "aapt2", "skin", "resources", "hot-update"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "asb"
+path = "src/main.rs"
+
+[dependencies]
+# CLI and argument parsing
+clap = { version = "4.5", features = ["derive", "cargo"] }
+# Async runtime for concurrent operations
+tokio = { version = "1.40", features = ["full"] }
+# Parallel processing
+rayon = "1.10"
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# File system operations
+walkdir = "2.5"
+# ZIP handling for AAR files
+zip = "2.2"
+# Hashing for incremental builds
+sha2 = "0.10"
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Terminal colors
+colored = "2.1"
+# Progress indicators
+indicatif = "0.17"
+# Path utilities
+path-absolutize = "3.1"
+# Environment variable expansion
+shellexpand = "3.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

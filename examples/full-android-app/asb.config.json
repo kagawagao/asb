@@ -1,0 +1,15 @@
+{
+  "resourceDir": "./app/res",
+  "manifestPath": "./app/AndroidManifest.xml",
+  "outputDir": "./build",
+  "packageName": "com.example.skinapp.app",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "additionalResourceDirs": [
+    "./feature-home/res",
+    "./feature-profile/res",
+    "./feature-settings/res"
+  ],
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0"
+}

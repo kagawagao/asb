@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings Feature Colors -->
+    <color name="settings_primary">#4CAF50</color>
+    <color name="settings_accent">#81C784</color>
+    <color name="settings_background">#E8F5E9</color>
+    <color name="settings_card">#FFFFFF</color>
+    <color name="settings_text">#212121</color>
+    <color name="settings_text_secondary">#757575</color>
+    <color name="settings_divider">#E0E0E0</color>
+    <color name="settings_switch_track">#BDBDBD</color>
+</resources>

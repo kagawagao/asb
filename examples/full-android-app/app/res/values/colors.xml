@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand Colors -->
+    <color name="primary">#6200EE</color>
+    <color name="primary_dark">#3700B3</color>
+    <color name="primary_light">#BB86FC</color>
+    <color name="accent">#03DAC6</color>
+    
+    <!-- Background Colors -->
+    <color name="background">#FFFFFF</color>
+    <color name="surface">#FFFFFF</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#000000</color>
+    <color name="text_secondary">#757575</color>
+    
+    <!-- Status Colors -->
+    <color name="error">#B00020</color>
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FF9800</color>
+    
+    <!-- Common Colors -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>
