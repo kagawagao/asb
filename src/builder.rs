@@ -9,6 +9,43 @@ use crate::aar::AarExtractor;
 use crate::cache::BuildCache;
 use crate::types::{AarInfo, BuildConfig, BuildResult, CompileResult};
 
+/// Normalize a resource path by removing version qualifiers
+/// e.g., "res/drawable-v21/icon.xml" -> "res/drawable/icon.xml"
+/// e.g., "res/color-v11/primary.xml" -> "res/color/primary.xml"
+fn normalize_resource_path(path: &str) -> String {
+    if !path.starts_with("res/") {
+        return path.to_string();
+    }
+    
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.len() < 3 {
+        return path.to_string();
+    }
+    
+    // parts[0] = "res"
+    // parts[1] = resource type (e.g., "drawable-v21", "mipmap-xxhdpi-v4")
+    // parts[2..] = file path
+    
+    let res_type = parts[1];
+    
+    // Remove version qualifiers like -v21, -v11, -v4, etc.
+    // Also handle complex qualifiers like "mipmap-xxhdpi-v4" -> "mipmap-xxhdpi"
+    let normalized_type = if let Some(v_pos) = res_type.rfind("-v") {
+        // Check if what follows "-v" is a number
+        let after_v = &res_type[v_pos + 2..];
+        if after_v.chars().all(|c| c.is_ascii_digit()) {
+            res_type[..v_pos].to_string()
+        } else {
+            res_type.to_string()
+        }
+    } else {
+        res_type.to_string()
+    };
+    
+    // Reconstruct the path
+    format!("res/{}/{}", normalized_type, parts[2..].join("/"))
+}
+
 /// Main builder for Android skin packages
 pub struct SkinBuilder {
     config: BuildConfig,
@@ -199,12 +236,15 @@ impl SkinBuilder {
 
         // First, determine which resources are actually in the linked APK
         // by checking what's already in the res/ directory
+        // We normalize paths to remove version qualifiers for comparison
         let mut included_resources = HashSet::new();
         for i in 0..zip_archive.len() {
             let file = zip_archive.by_index(i)?;
             let name = file.name();
             if name.starts_with("res/") && name != "res/" {
-                included_resources.insert(name.to_string());
+                // Normalize the path to remove version qualifiers like -v21, -v11, etc.
+                let normalized = normalize_resource_path(name);
+                included_resources.insert(normalized);
             }
         }
 
@@ -221,12 +261,19 @@ impl SkinBuilder {
         let mut added_files = HashSet::new();
 
         // Copy existing entries (resources.arsc, AndroidManifest.xml, etc.)
+        // BUT skip res/ entries - we'll add raw XML files instead
         let apk_file2 = File::open(apk_path)?;
         let mut zip_archive2 = ZipArchive::new(apk_file2)?;
         
         for i in 0..zip_archive2.len() {
             let mut file = zip_archive2.by_index(i)?;
             let name = file.name().to_string();
+            
+            // Skip res/ entries - we'll add the raw XML files from source directories
+            // This prevents including version-qualified directories like res/layout-v21/
+            if name.starts_with("res/") && name != "res/" {
+                continue;
+            }
             
             added_files.insert(name.clone());
 
