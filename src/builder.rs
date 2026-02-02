@@ -222,7 +222,7 @@ impl SkinBuilder {
     }
 
     /// Add raw resource files to the APK
-    fn add_resources_to_apk(&self, apk_path: &Path, _resource_dirs: &[PathBuf]) -> Result<()> {
+    fn add_resources_to_apk(&self, apk_path: &Path, resource_dirs: &[PathBuf]) -> Result<()> {
         use std::collections::HashSet;
         use std::fs::File;
         use std::io::{Read, Write};
@@ -264,59 +264,9 @@ impl SkinBuilder {
             zip_writer.write_all(&buffer)?;
         }
 
-        // Separate main resource dir from additional resource dirs
-        let main_res_dir = &self.config.resource_dir;
-        let additional_dirs: Vec<&PathBuf> = if let Some(additional) = &self.config.additional_resource_dirs {
-            additional.iter().collect()
-        } else {
-            vec![]
-        };
-
-        // Add ALL resource files from main resource directory
-        if main_res_dir.exists() {
-            for entry in WalkDir::new(main_res_dir)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-            {
-                let file_path = entry.path();
-                
-                // Skip hidden files
-                if file_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|n| n.starts_with('.'))
-                    .unwrap_or(false)
-                {
-                    continue;
-                }
-
-                // Get relative path from res directory
-                if let Ok(rel_path) = file_path.strip_prefix(main_res_dir) {
-                    let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
-
-                    // Skip if already added
-                    if added_files.contains(&zip_path) {
-                        continue;
-                    }
-                    
-                    added_files.insert(zip_path.clone());
-
-                    // Read file content
-                    let mut file = File::open(file_path)?;
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer)?;
-
-                    // Add to ZIP
-                    zip_writer.start_file(&zip_path, options)?;
-                    zip_writer.write_all(&buffer)?;
-                }
-            }
-        }
-
-        // For additional resource directories, add ALL resources to avoid runtime errors
-        // from unreferenced resources
-        for res_dir in additional_dirs {
+        // Add ALL resource files from ALL resource directories (main + AAR + additional)
+        // to ensure all resources are available at runtime, even if not explicitly referenced
+        for res_dir in resource_dirs {
             if !res_dir.exists() {
                 continue;
             }
@@ -342,7 +292,7 @@ impl SkinBuilder {
                 if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
                     let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
 
-                    // Skip if already added
+                    // Skip if already added (handles duplicate files across directories)
                     if added_files.contains(&zip_path) {
                         continue;
                     }
