@@ -1,0 +1,19 @@
+# Gradle build files
+.gradle/
+build/
+*.apk
+*.ap_
+*.aab
+
+# Android Studio
+.idea/
+*.iml
+local.properties
+
+# Generated files
+bin/
+gen/
+out/
+
+# ASB output
+com.example.skin.skin
