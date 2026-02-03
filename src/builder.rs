@@ -294,6 +294,17 @@ impl SkinBuilder {
                 if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
                     let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
 
+                    // Skip values resources - they are compiled into resources.arsc
+                    // For Resources.getIdentifier() to work, only resources.arsc is needed
+                    // Raw XML files are not required and can cause confusion with additionalResourceDirs
+                    let path_parts: Vec<&str> = zip_path.split('/').collect();
+                    if path_parts.len() >= 2 {
+                        let dir_name = path_parts[1];
+                        if dir_name == "values" || (dir_name.starts_with("values-") && dir_name.len() > 7) {
+                            continue;
+                        }
+                    }
+
                     // Skip if already added (handles duplicate files across directories)
                     if added_files.contains(&zip_path) {
                         continue;
