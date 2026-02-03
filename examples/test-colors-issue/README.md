@@ -1,20 +1,21 @@
-# Test Case: Colors Issue
+# Test Case: Resources.getIdentifier() Support
 
-This test case demonstrates the fix for values resources in skin packages with `additionalResourceDirs`.
+This test case demonstrates the fix for using `Resources.getIdentifier()` to lookup resource IDs in skin packages with `additionalResourceDirs`.
 
 ## Problem
 
-When building a skin package with `additionalResourceDirs`, values resources (like colors, strings, etc.) from the additional directories were being compiled into `resources.arsc` but NOT accessible at runtime.
+When using `Resources.getIdentifier()` to find resource IDs in skin packages, it was returning 0 for resources from `additionalResourceDirs`.
 
 ## Root Cause
 
-The skin package was incorrectly including raw XML files from the values folder. When multiple resource directories had the same file path (e.g., `base/res/values/colors.xml` and `feature/res/values/colors.xml`), only one raw XML file would be included, causing conflicts.
+The issue was that values resources need to be properly compiled into `resources.arsc` for `Resources.getIdentifier()` to work. Raw XML files are not needed for this Android API.
 
 ## Solution
 
 Values resources are now:
 1. ✅ Compiled into `resources.arsc` from ALL directories (main + AAR + additionalResourceDirs)
 2. ✅ NOT included as raw XML files in the skin package
+3. ✅ Accessible via `Resources.getIdentifier()` with correct resource IDs
 
 This follows Android's standard packaging principles where values resources only exist in compiled form.
 
@@ -42,9 +43,29 @@ test-colors-issue/
 ## Expected Result
 
 When building `feature.skin`:
-- `resources.arsc` contains ALL resources (base_primary, base_secondary, feature_primary, Hello, 你好)
+- `resources.arsc` contains ALL resources with correct resource IDs
 - NO raw values XML files are included
 - Only `AndroidManifest.xml` and `resources.arsc` in the skin package
+- `Resources.getIdentifier()` works correctly to find all resource IDs
+
+## How Resources.getIdentifier() Works
+
+```java
+// Load the skin package
+AssetManager assetManager = new AssetManager();
+assetManager.addAssetPath(skinPackagePath);
+Resources skinResources = new Resources(assetManager, null, null);
+
+// Find resource IDs - these will return correct IDs, not 0
+int baseColorId = skinResources.getIdentifier("base_primary", "color", "com.example.skin.feature");
+// Returns: 0x7f010000
+
+int featureColorId = skinResources.getIdentifier("feature_primary", "color", "com.example.skin.feature");
+// Returns: 0x7f010002
+
+int baseStringId = skinResources.getIdentifier("base_greeting", "string", "com.example.skin.feature");
+// Returns: 0x7f020000
+```
 
 ## Verification
 
@@ -64,9 +85,19 @@ Expected output:
 Archive:  build/feature.skin
   Length      Date    Time    Name
 ---------  ---------- -----   ----
-      804  2026-02-03 02:43   AndroidManifest.xml
-      972  2026-02-03 02:43   resources.arsc
+      804  YYYY-MM-DD HH:MM   AndroidManifest.xml
+      972  YYYY-MM-DD HH:MM   resources.arsc
 ---------                     -------
+     1776                     2 files
+
+base_primary
+base_secondary
+feature_primary
+Hello
+你好
+base_greeting
+feature_greeting
+```
      1776                     2 files
 
 base_primary
