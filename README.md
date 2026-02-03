@@ -371,37 +371,44 @@ asb build --package-id 0x7f
 
 **重要提示：** ASB 从版本 2.1.0 起，支持按照 Android 标准资源优先级策略处理资源冲突。
 
-当多个资源目录包含同名资源时，ASB 会按照以下优先级进行覆盖（数字越大优先级越高）：
+当多个资源目录包含同名资源时，ASB 会按照 **Android 标准优先级** 进行覆盖（数字越大优先级越高）：
 
-1. **主资源目录** (`resourceDir`) - 最低优先级
-2. **AAR 依赖资源** (`aarFiles`) - 中等优先级，按指定顺序
-3. **额外资源目录** (`additionalResourceDirs`) - 最高优先级，后面的目录覆盖前面的
+1. **AAR 依赖资源** (`aarFiles`) - 最低优先级（Library Dependencies）
+2. **主资源目录** (`resourceDir`) - 中等优先级（Main Source Set）
+3. **额外资源目录** (`additionalResourceDirs`) - 最高优先级（Product Flavor / Build Type）
+
+**符合 Android Gradle 构建标准：**
+```
+Library Dependencies < Main Source Set < Product Flavor < Build Type
+```
 
 **工作原理：**
 
 ASB 使用 aapt2 的 `-R` 标志实现资源覆盖语义：
-- 主资源目录的资源作为基础资源链接
-- AAR 和额外资源目录的资源作为覆盖层（overlay）链接
+- AAR 依赖资源（如果存在）作为基础资源，否则主资源目录作为基础
+- 其他资源作为覆盖层（overlay）链接
 - 当存在同名资源时，优先级高的资源会覆盖优先级低的资源
 
 **示例：**
 
 ```json
 {
-  "resourceDir": "./base/res",
+  "resourceDir": "./src/main/res",
+  "aarFiles": ["./libs/theme-lib.aar"],
   "additionalResourceDirs": [
-    "./theme-dark/res",
-    "./theme-custom/res"
+    "./src/free/res",
+    "./src/debug/res"
   ]
 }
 ```
 
-如果三个目录都有 `colors.xml` 定义了 `primary_color`：
-- `base/res`: `primary_color = #FF0000`（最低优先级）
-- `theme-dark/res`: `primary_color = #00FF00`（中等优先级）
-- `theme-custom/res`: `primary_color = #0000FF`（最高优先级）
+如果四个来源都定义了 `primary_color`：
+- `theme-lib.aar`: `primary_color = #FF0000`（最低优先级 - Library）
+- `src/main/res`: `primary_color = #00FF00`（Main）
+- `src/free/res`: `primary_color = #0000FF`（Product Flavor）
+- `src/debug/res`: `primary_color = #FFFF00`（最高优先级 - Build Type）
 
-最终皮肤包中 `primary_color` 的值为 `#0000FF`（来自 `theme-custom/res`）。
+最终皮肤包中 `primary_color` 的值为 `#FFFF00`（来自 `src/debug/res` - Build Type）。
 
 **完整示例：**
 

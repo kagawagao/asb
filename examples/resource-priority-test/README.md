@@ -6,15 +6,15 @@ This example demonstrates Android resource priority strategy implementation in A
 
 ```
 resource-priority-test/
-├── base/                   # Main resource directory (lowest priority)
+├── base/                   # Main resource directory (base priority, like src/main/res)
 │   └── res/
 │       └── values/
 │           └── colors.xml  # Defines: primary_color=#FF0000, secondary_color=#00FF00, accent_color=#0000FF
-├── overlay/                # First additional directory (medium priority)
+├── overlay/                # First additional directory (Product Flavor priority)
 │   └── res/
 │       └── values/
 │           └── colors.xml  # Overrides: primary_color=#00FF00
-└── additional/             # Second additional directory (highest priority)
+└── additional/             # Second additional directory (Build Type - highest priority)
     └── res/
         └── values/
             └── colors.xml  # Overrides: primary_color=#0000FF, adds: new_color=#FFFF00
@@ -22,13 +22,16 @@ resource-priority-test/
 
 ## Expected Behavior
 
-According to Android resource priority rules:
-1. **Main resource directory** (`base/res`) has lowest priority
-2. **Additional resource directories** override in order (later directories win)
+According to Android resource priority rules (符合 Android 标准):
+1. **Main resource directory** (`base/res`) - medium priority (like src/main/res)
+2. **Additional resource directories** - higher priority (like Product Flavor and Build Type)
+3. Later additional directories override earlier ones
+
+**Note:** In this example, there are no AAR/Library dependencies, so `base/res` (Main) is the base resources, and `overlay/` and `additional/` are overlays with increasing priority.
 
 ### Expected Final Resource Values
 
-- `primary_color`: `#0000FF` (from `additional/res`, highest priority)
+- `primary_color`: `#0000FF` (from `additional/res`, highest priority - like Build Type)
 - `secondary_color`: `#00FF00` (from `base/res`, no override)
 - `accent_color`: `#0000FF` (from `base/res`, no override)
 - `new_color`: `#FFFF00` (from `additional/res`, unique)
@@ -43,8 +46,8 @@ asb build
 ## Expected Output
 
 ASB should:
-1. Detect resource conflicts between directories
-2. Log which resources are being overridden
+1. Use `base/res` as base resources (Main)
+2. Apply `overlay/res` and `additional/res` as overlays in order
 3. Apply Android priority rules (later directories override earlier ones)
 4. Generate a skin package with the correct final resource values
 

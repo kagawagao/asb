@@ -191,6 +191,7 @@ impl SkinBuilder {
         let mut flat_files_by_priority: Vec<(ResourcePriority, Vec<PathBuf>, PathBuf)> = Vec::new();
         
         // Track which directory corresponds to which priority
+        // Following Android standard priority: Library (AAR) < Main < Additional (Flavors/BuildTypes)
         // Directory index 0 is always the main resource directory
         let main_res_idx = 0;
         let aar_start_idx = 1;
@@ -208,11 +209,14 @@ impl SkinBuilder {
                     let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
                     
                     // Determine priority for this resource directory
+                    // Android standard: Library < Main < Additional
                     let priority = if idx == main_res_idx {
                         ResourcePriority::Main
                     } else if idx >= aar_start_idx && idx < additional_start_idx {
-                        ResourcePriority::Aar(idx - aar_start_idx)
+                        // AAR dependencies have LOWEST priority (not medium!)
+                        ResourcePriority::Library(idx - aar_start_idx)
                     } else {
+                        // Additional resources (flavors/build types) have HIGHEST priority
                         ResourcePriority::Additional(idx - additional_start_idx)
                     };
                     
@@ -227,21 +231,39 @@ impl SkinBuilder {
         }
 
         // Sort by priority and separate base from overlays
-        // Base resources (Main priority) are linked normally
-        // Overlay resources (AAR and Additional) are linked with -R flag in priority order
+        // Following Android standard: Library (AAR) < Main < Additional (Flavors/BuildTypes)
+        // Strategy: Use the lowest priority resources as base, everything else as overlay
         flat_files_by_priority.sort_by_key(|(priority, _, _)| priority.value());
         
         let mut base_flat_files = Vec::new();
         let mut overlay_flat_files = Vec::new();
         
+        // Determine what should be base vs overlay
+        // If there are Library resources, they are base and everything else is overlay
+        // If there are no Library resources, Main is base and Additional are overlays
+        let has_library = flat_files_by_priority.iter().any(|(p, _, _)| matches!(p, ResourcePriority::Library(_)));
+        
         for (priority, files, dir) in &flat_files_by_priority {
             match priority {
-                ResourcePriority::Main => {
-                    debug!("Base resources: {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                ResourcePriority::Library(_) => {
+                    // Libraries are always base (lowest priority)
+                    debug!("Base resources (Library): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
                     base_flat_files.extend(files.clone());
                 }
-                ResourcePriority::Aar(_) | ResourcePriority::Additional(_) => {
-                    debug!("Overlay resources: {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                ResourcePriority::Main => {
+                    if has_library {
+                        // If we have libraries, Main is an overlay
+                        debug!("Overlay resources (Main): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                        overlay_flat_files.push(files.clone());
+                    } else {
+                        // If no libraries, Main is the base
+                        debug!("Base resources (Main): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                        base_flat_files.extend(files.clone());
+                    }
+                }
+                ResourcePriority::Additional(_) => {
+                    // Additional resources (flavors/build types) are always overlays
+                    debug!("Overlay resources (Additional): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
                     overlay_flat_files.push(files.clone());
                 }
             }

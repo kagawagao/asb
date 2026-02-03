@@ -8,21 +8,32 @@ Starting from version 2.1.0, ASB implements complete Android resource priority s
 
 ## 资源优先级规则 / Priority Rules
 
-ASB 按照以下优先级处理资源（数字越大优先级越高）：
+ASB 按照 Android 标准优先级处理资源（数字越大优先级越高）：
 
-1. **主资源目录** (`resourceDir`) - 优先级：0
-   - 应用的主要资源目录
-   - 最低优先级，会被其他资源覆盖
-
-2. **AAR 依赖资源** (`aarFiles`) - 优先级：1000+
+1. **依赖库资源** (`aarFiles`) - 优先级：0-999（最低）
    - AAR 库中的资源
+   - 最低优先级，会被主资源和额外资源覆盖
    - 按配置文件中指定的顺序，后面的 AAR 覆盖前面的
-   - 优先级：1000, 1001, 1002...
 
-3. **额外资源目录** (`additionalResourceDirs`) - 优先级：2000+
-   - 额外指定的资源目录
+2. **主资源目录** (`resourceDir`) - 优先级：1000
+   - 应用的主要资源目录（相当于 Android 的 `src/main/res`）
+   - 可以覆盖依赖库的资源
+   - 会被额外资源目录覆盖
+
+3. **额外资源目录** (`additionalResourceDirs`) - 优先级：2000+（最高）
+   - 额外指定的资源目录（相当于 Product Flavor 和 Build Type）
    - 最高优先级，按顺序覆盖，后面的目录覆盖前面的
    - 优先级：2000, 2001, 2002...
+
+**符合 Android 标准：**
+
+这个优先级顺序完全符合 Android Gradle 构建系统的标准：
+- **Library Dependencies** < **Main Source Set** < **Product Flavor** < **Build Type**
+
+在 ASB 中：
+- AAR 文件 = Library Dependencies
+- resourceDir = Main Source Set
+- additionalResourceDirs = Product Flavor / Build Type（按顺序）
 
 ## 技术实现 / Technical Implementation
 
@@ -30,16 +41,21 @@ ASB 按照以下优先级处理资源（数字越大优先级越高）：
 
 ASB 使用 aapt2 的原生覆盖语义实现资源优先级：
 
-- **Base Resources**: 主资源目录的资源作为普通参数传递给 `aapt2 link`
-- **Overlay Resources**: AAR 和额外资源目录的资源使用 `-R` 标志传递
+- **Base Resources**: 依赖库（AAR）资源作为基础资源，如果没有 AAR，则主资源目录作为基础
+- **Overlay Resources**: 主资源（如果有 AAR）和额外资源目录使用 `-R` 标志传递
 - **Override Rule**: 根据 aapt2 文档，使用 `-R` 标志的资源具有覆盖语义，最后指定的冲突资源优先
 
 ```bash
-# Simplified aapt2 link command structure:
+# 有 AAR 依赖的情况：
 aapt2 link \
-  base_file1.flat base_file2.flat \      # Base resources
-  -R aar_file1.flat -R aar_file2.flat \  # AAR overlay
-  -R additional1.flat -R additional2.flat # Additional overlay (highest priority)
+  lib1.flat lib2.flat \              # Library resources (base)
+  -R main_res1.flat -R main_res2.flat \     # Main resources (overlay)
+  -R flavor1.flat -R buildtype1.flat        # Additional resources (highest priority)
+
+# 没有 AAR 依赖的情况：
+aapt2 link \
+  main_res1.flat main_res2.flat \    # Main resources (base)
+  -R flavor1.flat -R buildtype1.flat # Additional resources (overlay)
 ```
 
 ### Code Architecture
@@ -49,9 +65,9 @@ aapt2 link \
 1. **ResourcePriority Enum** (`src/resource_priority.rs`):
    ```rust
    pub enum ResourcePriority {
-       Main,                    // Priority 0
-       Aar(usize),             // Priority 1000+
-       Additional(usize),      // Priority 2000+
+       Library(usize),      // Priority 0-999 (lowest)
+       Main,                // Priority 1000
+       Additional(usize),   // Priority 2000+ (highest)
    }
    ```
 
@@ -114,15 +130,15 @@ project/
 }
 ```
 
-**Priority Order (Lowest to Highest):**
-1. `./app/res` (Base)
-2. `./libs/theme-lib.aar` (AAR #0)
-3. `./libs/ui-lib.aar` (AAR #1)
-4. `./themes/dark/res` (Additional #0)
-5. `./branding/custom/res` (Additional #1 - Highest)
+**Priority Order (Lowest to Highest) - 符合 Android 标准:**
+1. `./libs/theme-lib.aar` (Library #0 - 最低优先级)
+2. `./libs/ui-lib.aar` (Library #1)
+3. `./app/res` (Main - 主资源)
+4. `./themes/dark/res` (Additional #0 - Product Flavor)
+5. `./branding/custom/res` (Additional #1 - Build Type, 最高优先级)
 
 If all sources define `button_color`:
-- Final value comes from `./branding/custom/res`
+- Final value comes from `./branding/custom/res` (highest priority)
 
 ### Example 3: 主题切换场景
 
