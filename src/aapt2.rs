@@ -253,6 +253,102 @@ impl Aapt2 {
         anyhow::bail!("Could not find compiled flat file for {}", resource_file.display())
     }
 
+    /// Link compiled resources into an APK with overlay support
+    /// Base flat files are linked first, then overlay flat files are applied with -R flag
+    /// This implements Android's resource priority strategy where later resources override earlier ones
+    pub fn link_with_overlays(
+        &self,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],  // Vec of overlay sets, ordered by priority
+        manifest_path: &Path,
+        android_jar: &Path,
+        output_apk: &Path,
+        package_name: Option<&str>,
+        version_code: Option<u32>,
+        version_name: Option<&str>,
+        stable_ids_file: Option<&Path>,
+        package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
+    ) -> Result<LinkResult> {
+        debug!("Linking {} base flat files with {} overlay sets", 
+               base_flat_files.len(), overlay_flat_files.len());
+
+        let mut cmd = Command::new(&self.aapt2_path);
+        cmd.arg("link")
+            .arg("--manifest")
+            .arg(manifest_path)
+            .arg("-I")
+            .arg(android_jar)
+            .arg("-o")
+            .arg(output_apk)
+            .arg("--auto-add-overlay")
+            .arg("--no-version-vectors")
+            // Keep resource files in the APK (not just resources.arsc)
+            .arg("--keep-raw-values")
+            // Allow references to resources not defined in this package
+            .arg("--allow-reserved-package-id")
+            .arg("--no-resource-removal");
+
+        if let Some(pkg) = package_name {
+            cmd.arg("--rename-manifest-package").arg(pkg);
+            cmd.arg("--rename-resources-package").arg(pkg);
+        }
+
+        if let Some(code) = version_code {
+            cmd.arg("--version-code").arg(code.to_string());
+        }
+
+        if let Some(name) = version_name {
+            cmd.arg("--version-name").arg(name);
+        }
+
+        if let Some(min_sdk) = min_sdk_version {
+            cmd.arg("--min-sdk-version").arg(min_sdk.to_string());
+        }
+
+        if let Some(stable_ids) = stable_ids_file {
+            cmd.arg("--stable-ids").arg(stable_ids);
+            cmd.arg("--emit-ids").arg(stable_ids);
+        }
+
+        // Set package ID for resource IDs
+        // This is critical for dynamic resource loading via new Resources()
+        // Default to standard app package ID if not specified
+        let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
+        cmd.arg("--package-id").arg(pkg_id);
+
+        // Add base flat files (normal arguments)
+        for flat_file in base_flat_files {
+            cmd.arg(flat_file);
+        }
+
+        // Add overlay flat files with -R flag for each set
+        // The order matters: later overlays override earlier ones
+        for overlay_set in overlay_flat_files {
+            for flat_file in overlay_set {
+                cmd.arg("-R").arg(flat_file);
+            }
+        }
+
+        let output = cmd.output().context("Failed to execute aapt2 link")?;
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        if !output.status.success() {
+            return Ok(LinkResult {
+                success: false,
+                apk_path: None,
+                errors: vec![stderr.to_string()],
+            });
+        }
+
+        Ok(LinkResult {
+            success: true,
+            apk_path: Some(output_apk.to_path_buf()),
+            errors: vec![],
+        })
+    }
+
     /// Link compiled resources into an APK
     pub fn link(
         &self,

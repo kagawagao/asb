@@ -4,6 +4,7 @@ mod builder;
 mod cache;
 mod cli;
 mod dependency;
+mod resource_priority;
 mod types;
 
 use anyhow::Result;

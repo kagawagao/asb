@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 use crate::aapt2::Aapt2;
 use crate::aar::AarExtractor;
 use crate::cache::BuildCache;
+use crate::resource_priority::ResourcePriority;
 use crate::types::{BuildConfig, BuildResult, CompileResult};
 
 /// Normalize a resource path by removing version qualifiers
@@ -182,9 +183,19 @@ impl SkinBuilder {
 
         // Compile resources - compile each directory separately to avoid file name conflicts
         info!("Compiling resources from {} directories...", resource_dirs.len());
-        let mut all_flat_files = Vec::new();
         let mut missing_dirs = Vec::new();
         let mut valid_resource_dirs = Vec::new();
+        
+        // Track flat files by priority level for proper ordering
+        // Flat files will be collected per directory and ordered by priority
+        let mut flat_files_by_priority: Vec<(ResourcePriority, Vec<PathBuf>, PathBuf)> = Vec::new();
+        
+        // Track which directory corresponds to which priority
+        // Directory index 0 is always the main resource directory
+        let main_res_idx = 0;
+        let aar_start_idx = 1;
+        let aar_count = aar_infos.len();
+        let additional_start_idx = 1 + aar_count;
 
         for (idx, res_dir) in resource_dirs.iter().enumerate() {
             if res_dir.exists() {
@@ -195,7 +206,18 @@ impl SkinBuilder {
                 let files = self.find_resource_files(res_dir)?;
                 if !files.is_empty() {
                     let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
-                    all_flat_files.extend(flat_files);
+                    
+                    // Determine priority for this resource directory
+                    let priority = if idx == main_res_idx {
+                        ResourcePriority::Main
+                    } else if idx >= aar_start_idx && idx < additional_start_idx {
+                        ResourcePriority::Aar(idx - aar_start_idx)
+                    } else {
+                        ResourcePriority::Additional(idx - additional_start_idx)
+                    };
+                    
+                    debug!("Resource directory {} has priority {:?}", res_dir.display(), priority);
+                    flat_files_by_priority.push((priority, flat_files, res_dir.clone()));
                 }
                 valid_resource_dirs.push(res_dir.clone());
             } else {
@@ -204,9 +226,33 @@ impl SkinBuilder {
             }
         }
 
-        let flat_files = all_flat_files;
+        // Sort by priority and separate base from overlays
+        // Base resources (Main priority) are linked normally
+        // Overlay resources (AAR and Additional) are linked with -R flag in priority order
+        flat_files_by_priority.sort_by_key(|(priority, _, _)| priority.value());
+        
+        let mut base_flat_files = Vec::new();
+        let mut overlay_flat_files = Vec::new();
+        
+        for (priority, files, dir) in &flat_files_by_priority {
+            match priority {
+                ResourcePriority::Main => {
+                    debug!("Base resources: {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                    base_flat_files.extend(files.clone());
+                }
+                ResourcePriority::Aar(_) | ResourcePriority::Additional(_) => {
+                    debug!("Overlay resources: {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                    overlay_flat_files.push(files.clone());
+                }
+            }
+        }
+        
+        info!("Resource compilation complete: {} base files, {} overlay sets (following Android resource priority)", 
+              base_flat_files.len(), overlay_flat_files.len());
+        
+        let total_flat_files = base_flat_files.len() + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
 
-        if flat_files.is_empty() {
+        if total_flat_files == 0 {
             AarExtractor::cleanup_aars(&aar_infos)?;
             
             // Provide helpful error message
@@ -233,7 +279,7 @@ impl SkinBuilder {
             });
         }
 
-        info!("Compiled {} resource files", flat_files.len());
+        info!("Compiled {} resource files total", total_flat_files);
 
         // Save cache
         if let Some(cache) = &self.cache {
@@ -256,16 +302,17 @@ impl SkinBuilder {
             None
         };
 
-        // Link resources into skin package
-        info!("Linking resources...");
+        // Link resources into skin package using overlay strategy
+        info!("Linking resources with Android resource priority strategy...");
         let output_filename = self.config.output_file.as_ref()
             .map(|f| f.clone())
             .unwrap_or_else(|| format!("{}.skin", self.config.package_name));
         
         let output_apk = self.config.output_dir.join(output_filename);
 
-        let link_result = self.aapt2.link(
-            &flat_files,
+        let link_result = self.aapt2.link_with_overlays(
+            &base_flat_files,
+            &overlay_flat_files,
             &processed_manifest,
             &self.config.android_jar,
             &output_apk,

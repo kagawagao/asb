@@ -1,0 +1,12 @@
+{
+  "resourceDir": "./base/res",
+  "manifestPath": "./base/AndroidManifest.xml",
+  "outputDir": "./build",
+  "packageName": "com.example.priority.test",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "additionalResourceDirs": [
+    "./overlay/res",
+    "./additional/res"
+  ],
+  "incremental": false
+}
