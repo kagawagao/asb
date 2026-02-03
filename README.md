@@ -11,6 +11,7 @@
 - 🚀 **增量构建** - 支持增量打包，提升构建速度
 - ⚡ **并发编译** - 充分利用 CPU 多核性能，支持并行资源编译
 - 🔒 **资源 ID 稳定** - 支持 stable IDs，确保每次编译的资源 ID 不变
+- 🎯 **资源优先级** - 按照 Android 资源优先级策略处理资源冲突和覆盖
 - 🔧 **脚本化工具** - 完全可通过命令行或配置文件使用
 - 🌐 **跨平台** - 支持 Windows、macOS、Linux
 - 💪 **Rust 实现** - 使用 Rust 编写，极致性能和内存安全
@@ -366,6 +367,46 @@ asb build --package-id 0x7f
 - `0x7e`: 某些特殊插件化场景
 - 其他值：根据具体插件化框架要求
 
+### Resource Priority / 资源优先级
+
+**重要提示：** ASB 从版本 2.1.0 起，支持按照 Android 标准资源优先级策略处理资源冲突。
+
+当多个资源目录包含同名资源时，ASB 会按照以下优先级进行覆盖（数字越大优先级越高）：
+
+1. **主资源目录** (`resourceDir`) - 最低优先级
+2. **AAR 依赖资源** (`aarFiles`) - 中等优先级，按指定顺序
+3. **额外资源目录** (`additionalResourceDirs`) - 最高优先级，后面的目录覆盖前面的
+
+**工作原理：**
+
+ASB 使用 aapt2 的 `-R` 标志实现资源覆盖语义：
+- 主资源目录的资源作为基础资源链接
+- AAR 和额外资源目录的资源作为覆盖层（overlay）链接
+- 当存在同名资源时，优先级高的资源会覆盖优先级低的资源
+
+**示例：**
+
+```json
+{
+  "resourceDir": "./base/res",
+  "additionalResourceDirs": [
+    "./theme-dark/res",
+    "./theme-custom/res"
+  ]
+}
+```
+
+如果三个目录都有 `colors.xml` 定义了 `primary_color`：
+- `base/res`: `primary_color = #FF0000`（最低优先级）
+- `theme-dark/res`: `primary_color = #00FF00`（中等优先级）
+- `theme-custom/res`: `primary_color = #0000FF`（最高优先级）
+
+最终皮肤包中 `primary_color` 的值为 `#0000FF`（来自 `theme-custom/res`）。
+
+**完整示例：**
+
+参见 `examples/resource-priority-test/` 目录，展示了资源优先级的完整用法。
+
 ## Use Cases / 使用场景
 
 ### 1. 应用皮肤/主题热更新
@@ -382,6 +423,26 @@ asb build --config skin-theme.json --stable-ids stable-ids.txt
 
 ```bash
 asb build --config asb.config.json --incremental --workers 16
+```
+
+### 3. 多层资源覆盖
+
+使用资源优先级特性实现主题定制：
+
+```bash
+# 基础资源 + 深色主题 + 自定义品牌
+asb build --config multi-layer-theme.json
+```
+
+配置示例：
+```json
+{
+  "resourceDir": "./base/res",
+  "additionalResourceDirs": [
+    "./themes/dark/res",
+    "./branding/custom/res"
+  ]
+}
 ```
 
 ## Architecture / 架构

@@ -208,7 +208,7 @@ pub fn find_resources_with_priority(
         
         // Find the corresponding flat file
         // This is a heuristic match based on file naming conventions
-        if let Some(flat_file) = find_matching_flat_file(source_path, resource_dir, compiled_flat_files) {
+        if let Some(flat_file) = find_matching_flat_file(source_path, compiled_flat_files) {
             resources.push(ResourceInfo {
                 source_path: source_path.to_path_buf(),
                 flat_file,
@@ -229,7 +229,6 @@ pub fn find_resources_with_priority(
 /// - values_strings.arsc.flat for res/values/strings.xml
 fn find_matching_flat_file(
     source_path: &Path,
-    _resource_dir: &Path,
     flat_files: &[PathBuf],
 ) -> Option<PathBuf> {
     // Get the resource type directory (e.g., "drawable", "layout", "values-en")
@@ -251,21 +250,17 @@ fn find_matching_flat_file(
         ]
     };
     
-    // Search for matching flat file
+    // Search for matching flat file - combine exact and pattern matching in single pass
     for flat_file in flat_files {
         if let Some(flat_name) = flat_file.file_name().and_then(|n| n.to_str()) {
+            // Try exact match first
             for possible in &possible_names {
                 if flat_name == possible {
                     return Some(flat_file.clone());
                 }
             }
-        }
-    }
-    
-    // If no exact match, try to find by pattern
-    // This handles edge cases in aapt2 naming
-    for flat_file in flat_files {
-        if let Some(flat_name) = flat_file.file_name().and_then(|n| n.to_str()) {
+            
+            // Try pattern matching if exact match fails
             // Check if the flat file name starts with the resource type
             if flat_name.starts_with(parent_name) {
                 // And contains the file name (without extension for values)
