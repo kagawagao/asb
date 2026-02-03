@@ -294,13 +294,18 @@ impl Cli {
                 info!("Found {} common dependencies to compile first", common_deps.len());
                 
                 // Determine cache directory for common dependencies
-                let common_cache_dir = build_configs[0].cache_dir.clone()
-                    .unwrap_or_else(|| build_configs[0].output_dir.join(".build-cache"))
-                    .join("common-deps");
+                // Use the first config's cache directory as the base, since all configs should use compatible settings
+                // for shared common dependency compilation
+                let base_cache_dir = build_configs[0].cache_dir.clone()
+                    .unwrap_or_else(|| build_configs[0].output_dir.join(".build-cache"));
+                let common_cache_dir = base_cache_dir.join("common-deps");
                 
                 // Initialize common dependency cache
                 let mut common_dep_cache = CommonDependencyCache::new(common_cache_dir.clone())?;
                 common_dep_cache.init()?;
+                
+                // Use aapt2 path from first config (all configs should use the same aapt2)
+                let aapt2 = Aapt2::new(build_configs[0].aapt2_path.clone())?;
                 
                 // Compile common dependencies
                 for common_dep in &common_deps {
@@ -318,8 +323,6 @@ impl Cli {
                         let compiled_dir = common_cache_dir.join("compiled");
                         std::fs::create_dir_all(&compiled_dir)?;
                         
-                        // Use aapt2 to compile resources
-                        let aapt2 = Aapt2::new(build_configs[0].aapt2_path.clone())?;
                         let compile_result = aapt2.compile_dir(&common_dep.resource_dir, &compiled_dir)?;
                         
                         if compile_result.success {

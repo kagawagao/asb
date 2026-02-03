@@ -224,8 +224,10 @@ fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>
 /// # Returns
 /// 
 /// A vector of CommonDependency structs, each representing a resource directory that is
-/// shared by multiple configurations
+/// shared by multiple configurations. Returns empty vector for 0 or 1 configs since common
+/// dependencies require at least 2 apps sharing a resource directory.
 pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDependency> {
+    // Early return for trivial cases - need at least 2 configs to have common dependencies
     if configs.len() <= 1 {
         return vec![];
     }
