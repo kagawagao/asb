@@ -298,8 +298,13 @@ impl SkinBuilder {
                     // According to Android packaging principles, values resources (colors, strings, dimens, etc.)
                     // should only exist in the compiled binary format (resources.arsc), not as raw XML files
                     // This includes both "res/values/" and qualified variants like "res/values-en/", "res/values-hdpi/", etc.
-                    if zip_path.starts_with("res/values/") || zip_path.starts_with("res/values-") {
-                        continue;
+                    // We check for either "res/values/" or "res/values-<qualifier>/" where qualifier matches Android resource qualifiers
+                    let path_parts: Vec<&str> = zip_path.split('/').collect();
+                    if path_parts.len() >= 2 {
+                        let dir_name = path_parts[1];
+                        if dir_name == "values" || (dir_name.starts_with("values-") && dir_name.len() > 7) {
+                            continue;
+                        }
                     }
 
                     // Skip if already added (handles duplicate files across directories)
