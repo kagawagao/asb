@@ -117,7 +117,7 @@ fn preprocess_manifest(
         if let Some(pos) = modified_content.find("<manifest") {
             if let Some(end_pos) = modified_content[pos..].find('>') {
                 let insert_pos = pos + end_pos + 1;
-                let uses_sdk = "\n    \n    <uses-sdk android:minSdkVersion=\"26\" />";
+                let uses_sdk = "\n    <uses-sdk android:minSdkVersion=\"26\" />";
                 modified_content.insert_str(insert_pos, uses_sdk);
             }
         }
