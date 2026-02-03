@@ -70,56 +70,41 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
     false
 }
 
-/// Preprocess the manifest file to ensure it has required attributes
+/// Check if manifest has package attribute
+fn check_manifest_has_package(manifest_path: &Path) -> Result<bool> {
+    let manifest_content = fs::read_to_string(manifest_path)?;
+    Ok(manifest_content.contains("package="))
+}
+
+/// Inject package attribute into manifest if missing
 /// Returns the path to the processed manifest (either original or temp file)
-fn preprocess_manifest(
+fn inject_package_if_needed(
     manifest_path: &Path,
     package_name: &str,
-    resource_dirs: &[PathBuf],
     output_dir: &Path,
 ) -> Result<PathBuf> {
     let manifest_content = fs::read_to_string(manifest_path)?;
     
-    let needs_package = !manifest_content.contains("package=");
-    let needs_min_sdk = has_adaptive_icon_resources(resource_dirs) 
-        && !manifest_content.contains("<uses-sdk")
-        && !manifest_content.contains("android:minSdkVersion");
-    
-    if !needs_package && !needs_min_sdk {
-        // Manifest is fine, use as-is
+    if manifest_content.contains("package=") {
+        // Manifest already has package attribute, use as-is
         return Ok(manifest_path.to_path_buf());
     }
     
-    // Need to modify the manifest
-    let mut modified_content = manifest_content.clone();
+    warn!("AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"", package_name);
     
-    if needs_package {
-        warn!("AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"", package_name);
-        // Find the <manifest tag and inject the package attribute
-        if let Some(pos) = modified_content.find("<manifest") {
-            // Find the end of the opening tag
-            if let Some(end_pos) = modified_content[pos..].find('>') {
-                let end_index = pos + end_pos;
-                // Check if this is a self-closing tag or has a newline before >
-                let before_close = &modified_content[pos..end_index];
-                
-                // Insert package attribute before the closing >
-                let insert_pos = end_index;
-                let package_attr = format!("\n    package=\"{}\"", package_name);
-                modified_content.insert_str(insert_pos, &package_attr);
-            }
-        }
-    }
+    // Need to inject package attribute
+    let mut modified_content = manifest_content;
     
-    if needs_min_sdk {
-        warn!("AndroidManifest.xml is missing minSdkVersion but has adaptive-icon resources, adding <uses-sdk android:minSdkVersion=\"26\" />");
-        // Find the <manifest> closing tag and insert <uses-sdk> after it
-        if let Some(pos) = modified_content.find("<manifest") {
-            if let Some(end_pos) = modified_content[pos..].find('>') {
-                let insert_pos = pos + end_pos + 1;
-                let uses_sdk = "\n    <uses-sdk android:minSdkVersion=\"26\" />";
-                modified_content.insert_str(insert_pos, uses_sdk);
-            }
+    // Find the <manifest tag and inject the package attribute
+    if let Some(pos) = modified_content.find("<manifest") {
+        // Find the end of the opening tag
+        if let Some(end_pos) = modified_content[pos..].find('>') {
+            let end_index = pos + end_pos;
+            
+            // Insert package attribute before the closing >
+            let insert_pos = end_index;
+            let package_attr = format!("\n    package=\"{}\"", package_name);
+            modified_content.insert_str(insert_pos, &package_attr);
         }
     }
     
@@ -261,13 +246,21 @@ impl SkinBuilder {
             cache.save()?;
         }
 
-        // Preprocess manifest to inject package attribute and minSdkVersion if needed
-        let processed_manifest = preprocess_manifest(
+        // Inject package attribute if missing (aapt2's --rename-manifest-package only renames, doesn't add)
+        let processed_manifest = inject_package_if_needed(
             &self.config.manifest_path,
             &self.config.package_name,
-            &resource_dirs,
             &self.config.output_dir,
         )?;
+
+        // Determine if we need to set min SDK version for adaptive icons
+        // Use aapt2's --min-sdk-version parameter instead of modifying manifest
+        let min_sdk_version = if has_adaptive_icon_resources(&resource_dirs) {
+            warn!("Detected adaptive-icon resources, setting minimum SDK version to 26");
+            Some(26)
+        } else {
+            None
+        };
 
         // Link resources into skin package
         info!("Linking resources...");
@@ -287,6 +280,7 @@ impl SkinBuilder {
             self.config.version_name.as_deref(),
             self.config.stable_ids_file.as_deref(),
             self.config.package_id.as_deref(),
+            min_sdk_version,
         )?;
 
         // Cleanup temporary manifest if created
