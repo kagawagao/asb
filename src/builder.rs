@@ -70,12 +70,6 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
     false
 }
 
-/// Check if manifest has package attribute
-fn check_manifest_has_package(manifest_path: &Path) -> Result<bool> {
-    let manifest_content = fs::read_to_string(manifest_path)?;
-    Ok(manifest_content.contains("package="))
-}
-
 /// Inject package attribute into manifest if missing
 /// Returns the path to the processed manifest (either original or temp file)
 fn inject_package_if_needed(
