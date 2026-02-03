@@ -177,10 +177,11 @@ impl SkinBuilder {
 
         // Link resources into skin package
         info!("Linking resources...");
-        let output_apk = self.config.output_dir.join(format!(
-            "{}.skin",
-            self.config.package_name
-        ));
+        let output_filename = self.config.output_file.as_ref()
+            .map(|f| f.clone())
+            .unwrap_or_else(|| format!("{}.skin", self.config.package_name));
+        
+        let output_apk = self.config.output_dir.join(output_filename);
 
         let link_result = self.aapt2.link(
             &flat_files,

@@ -1,0 +1,18 @@
+{
+  "baseDir": "./",
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "baseDir": "./app1",
+      "packageName": "com.example.skin.app1"
+    },
+    {
+      "baseDir": "./app2",
+      "packageName": "com.example.skin.app2"
+    }
+  ]
+}

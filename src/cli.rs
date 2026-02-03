@@ -2,10 +2,11 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::aapt2::Aapt2;
 use crate::builder::SkinBuilder;
+use crate::dependency::group_configs_by_dependencies;
 use crate::types::BuildConfig;
 
 #[derive(Parser)]
@@ -156,11 +157,25 @@ impl Cli {
         stable_ids: Option<PathBuf>,
         workers: Option<usize>,
     ) -> Result<()> {
+        // Check if CLI arguments are provided
+        let has_cli_args = resource_dir.is_some()
+            || manifest.is_some()
+            || output.is_some()
+            || package.is_some()
+            || android_jar.is_some()
+            || !aar.is_empty()
+            || aapt2.is_some()
+            || incremental
+            || version_code.is_some()
+            || version_name.is_some()
+            || stable_ids.is_some()
+            || workers.is_some();
+
         // Check if using defaults before moving config_file
         let using_defaults = config_file.is_none() && !PathBuf::from("./asb.config.json").exists();
-        
-        // Load config: explicit file > asb.config.json in current dir > defaults
-        let mut build_config = BuildConfig::load_or_default(config_file)?;
+
+        // Load configs: support both single and array mode
+        let mut build_configs = BuildConfig::load_configs(config_file)?;
 
         // Show info message if using defaults
         if using_defaults {
@@ -168,66 +183,220 @@ impl Cli {
             info!("Create asb.config.json in current directory to customize settings");
         }
 
-        // Override config with CLI arguments (CLI args have highest priority)
-        if let Some(rd) = resource_dir {
-            build_config.resource_dir = rd;
-        }
-        if let Some(m) = manifest {
-            build_config.manifest_path = m;
-        }
-        if let Some(o) = output {
-            build_config.output_dir = o;
-        }
-        if let Some(p) = package {
-            build_config.package_name = p;
-        }
-        if let Some(aj) = android_jar {
-            build_config.android_jar = aj;
-        }
-        if !aar.is_empty() {
-            build_config.aar_files = Some(aar);
-        }
-        if let Some(a) = aapt2 {
-            build_config.aapt2_path = Some(a);
-        }
-        if incremental {
-            build_config.incremental = Some(true);
-        }
-        if let Some(vc) = version_code {
-            build_config.version_code = Some(vc);
-        }
-        if let Some(vn) = version_name {
-            build_config.version_name = Some(vn);
-        }
-        if let Some(si) = stable_ids {
-            build_config.stable_ids_file = Some(si);
-        }
-        if let Some(w) = workers {
-            build_config.parallel_workers = Some(w);
+        // If CLI arguments are provided and we have multiple configs, warn the user
+        if has_cli_args && build_configs.len() > 1 {
+            warn!("CLI arguments provided with array configuration. CLI arguments will override ALL configurations.");
         }
 
-        println!("{}", "\nBuilding skin package...\n".blue().bold());
-
-        let start_time = std::time::Instant::now();
-        let mut builder = SkinBuilder::new(build_config)?;
-        let result = builder.build().await?;
-        let elapsed = start_time.elapsed();
-
-        if result.success {
-            println!("{}", "\n✓ Skin package built successfully!".green().bold());
-            if let Some(apk_path) = result.apk_path {
-                println!("  {}: {}", "Output".cyan(), apk_path.display());
+        // Override configs with CLI arguments (CLI args have highest priority)
+        if has_cli_args {
+            for build_config in &mut build_configs {
+                if let Some(ref rd) = resource_dir {
+                    build_config.resource_dir = rd.clone();
+                }
+                if let Some(ref m) = manifest {
+                    build_config.manifest_path = m.clone();
+                }
+                if let Some(ref o) = output {
+                    build_config.output_dir = o.clone();
+                }
+                if let Some(ref p) = package {
+                    build_config.package_name = p.clone();
+                }
+                if let Some(ref aj) = android_jar {
+                    build_config.android_jar = aj.clone();
+                }
+                if !aar.is_empty() {
+                    build_config.aar_files = Some(aar.clone());
+                }
+                if let Some(ref a) = aapt2 {
+                    build_config.aapt2_path = Some(a.clone());
+                }
+                if incremental {
+                    build_config.incremental = Some(true);
+                }
+                if let Some(vc) = version_code {
+                    build_config.version_code = Some(vc);
+                }
+                if let Some(ref vn) = version_name {
+                    build_config.version_name = Some(vn.clone());
+                }
+                if let Some(ref si) = stable_ids {
+                    build_config.stable_ids_file = Some(si.clone());
+                }
+                if let Some(w) = workers {
+                    build_config.parallel_workers = Some(w);
+                }
             }
-            println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
+        }
+
+        // For array mode with multiple configs, ensure each config has a unique compiled directory
+        // to avoid conflicts when building multiple packages from the same output directory
+        if build_configs.len() > 1 {
+            for (idx, build_config) in build_configs.iter_mut().enumerate() {
+                // Only set if not explicitly configured
+                if build_config.compiled_dir.is_none() {
+                    let unique_compiled_dir = build_config.output_dir.join(format!("compiled_{}", idx));
+                    build_config.compiled_dir = Some(unique_compiled_dir);
+                }
+            }
+        }
+
+        if build_configs.len() == 1 {
+            // Single configuration mode - keep backward compatibility
+            println!("{}", "\nBuilding skin package...\n".blue().bold());
+            let start_time = std::time::Instant::now();
+            let mut builder = SkinBuilder::new(build_configs.into_iter().next().unwrap())?;
+            let result = builder.build().await?;
+            let elapsed = start_time.elapsed();
+
+            if result.success {
+                println!("{}", "\n✓ Skin package built successfully!".green().bold());
+                if let Some(apk_path) = result.apk_path {
+                    println!("  {}: {}", "Output".cyan(), apk_path.display());
+                }
+                println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
+            } else {
+                println!("{}", "\n✗ Build failed:".red().bold());
+                for error in &result.errors {
+                    println!("  - {}", error);
+                }
+                std::process::exit(1);
+            }
         } else {
-            println!("{}", "\n✗ Build failed:".red().bold());
-            for error in &result.errors {
-                println!("  - {}", error);
+            // Multiple configurations mode
+            println!(
+                "{}",
+                format!("\nBuilding {} skin packages...\n", build_configs.len())
+                    .blue()
+                    .bold()
+            );
+
+            let start_time = std::time::Instant::now();
+
+            // Group configs by dependencies
+            let (independent_configs, dependent_groups) =
+                group_configs_by_dependencies(build_configs)?;
+
+            info!(
+                "Found {} independent configs and {} dependency groups",
+                independent_configs.len(),
+                dependent_groups.len()
+            );
+
+            let mut all_results = Vec::new();
+            let mut success_count = 0;
+            let mut fail_count = 0;
+
+            // Build independent configs in parallel
+            if !independent_configs.is_empty() {
+                info!("Building {} independent configs in parallel...", independent_configs.len());
+                
+                let mut tasks = tokio::task::JoinSet::new();
+                
+                for config_with_idx in independent_configs {
+                    let idx = config_with_idx.index;
+                    let config = config_with_idx.config.clone();
+                    
+                    tasks.spawn(async move {
+                        let mut builder = SkinBuilder::new(config)?;
+                        let result = builder.build().await?;
+                        Ok::<_, anyhow::Error>((idx, result))
+                    });
+                }
+                
+                while let Some(result) = tasks.join_next().await {
+                    match result {
+                        Ok(Ok((idx, build_result))) => {
+                            all_results.push((idx, build_result));
+                        }
+                        Ok(Err(e)) => {
+                            error!("Build error: {}", e);
+                            fail_count += 1;
+                        }
+                        Err(e) => {
+                            error!("Task join error: {}", e);
+                            fail_count += 1;
+                        }
+                    }
+                }
             }
-            std::process::exit(1);
+
+            // Build dependent groups sequentially
+            for (group_number, group) in dependent_groups.into_iter().enumerate() {
+                info!(
+                    "Building dependency group {} with {} configs sequentially...",
+                    group_number + 1,
+                    group.len()
+                );
+
+                for config_with_idx in group {
+                    let config = config_with_idx.config.clone();
+                    match Self::build_single_config(config).await {
+                        Ok(result) => {
+                            all_results.push((config_with_idx.index, result));
+                        }
+                        Err(e) => {
+                            error!("Build error: {}", e);
+                            fail_count += 1;
+                        }
+                    }
+                }
+            }
+
+            // Count successes and failures
+            for (_, result) in &all_results {
+                if result.success {
+                    success_count += 1;
+                } else {
+                    fail_count += 1;
+                }
+            }
+
+            let elapsed = start_time.elapsed();
+
+            // Display results
+            println!("\n{}", "Build Summary:".blue().bold());
+            println!(
+                "  {}: {}",
+                "Successful".green(),
+                success_count
+            );
+            println!(
+                "  {}: {}",
+                "Failed".red(),
+                fail_count
+            );
+            println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
+
+            // Show individual results
+            println!("\n{}", "Individual Results:".blue().bold());
+            for (idx, result) in &all_results {
+                if result.success {
+                    if let Some(ref apk_path) = result.apk_path {
+                        println!("  {} Config #{}: {}", "✓".green(), idx + 1, apk_path.display());
+                    } else {
+                        println!("  {} Config #{}", "✓".green(), idx + 1);
+                    }
+                } else {
+                    println!("  {} Config #{}: Build failed", "✗".red(), idx + 1);
+                    for error in &result.errors {
+                        println!("      - {}", error);
+                    }
+                }
+            }
+
+            if fail_count > 0 {
+                std::process::exit(1);
+            }
         }
 
         Ok(())
+    }
+
+    async fn build_single_config(config: BuildConfig) -> Result<crate::types::BuildResult> {
+        let mut builder = SkinBuilder::new(config)?;
+        builder.build().await
     }
 
     fn run_clean(config_file: Option<PathBuf>, output_dir: Option<PathBuf>) -> Result<()> {

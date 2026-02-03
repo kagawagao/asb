@@ -9,6 +9,10 @@ repository = "https://github.com/kagawagao/asb"
 keywords = ["android", "aapt2", "skin", "resources", "hot-update"]
 categories = ["command-line-utilities", "development-tools"]
 
+[lib]
+name = "asb"
+path = "src/lib.rs"
+
 [[bin]]
 name = "asb"
 path = "src/main.rs"
