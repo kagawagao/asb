@@ -1,6 +1,7 @@
-use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+
+use anyhow::Result;
 
 use crate::types::BuildConfig;
 
@@ -184,10 +185,7 @@ fn topological_sort(
     // We need: dependency -> dependents for topological sort
     for (dependent, deps) in dependencies {
         for &dependency in deps {
-            adj_list
-                .entry(dependency)
-                .or_default()
-                .push(*dependent);
+            adj_list.entry(dependency).or_default().push(*dependent);
             in_degree[*dependent] += 1;
         }
     }
