@@ -466,9 +466,12 @@ impl Cli {
         // Create template AndroidManifest.xml if it doesn't exist
         let manifest_path = dir.join("src/main/AndroidManifest.xml");
         if !manifest_path.exists() {
-            // Safe to unwrap: join() always creates a path with a parent
-            std::fs::create_dir_all(manifest_path.parent().unwrap())?;
-            // Note: uses-sdk is appropriate here as ASB builds APKs directly with aapt2, not Gradle
+            std::fs::create_dir_all(
+                manifest_path.parent()
+                    .expect("manifest path must have parent directory")
+            )?;
+            // Note: uses-sdk is deprecated in modern Gradle-based Android development, 
+            // but is appropriate here as ASB builds APKs directly with aapt2, not Gradle
             let manifest_content = r#"<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.skin">
