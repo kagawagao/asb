@@ -1,6 +1,7 @@
 use anyhow::Result;
+use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use walkdir::WalkDir;
 
 use crate::aapt2::Aapt2;
@@ -43,6 +44,91 @@ fn normalize_resource_path(path: &str) -> String {
     
     // Reconstruct the path
     format!("res/{}/{}", normalized_type, parts[2..].join("/"))
+}
+
+/// Check if the resource directories contain adaptive-icon resources
+fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
+    for res_dir in resource_dirs {
+        for entry in WalkDir::new(res_dir).into_iter().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(parent) = path.parent() {
+                    if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+                        // Check for mipmap-anydpi (without version qualifier) or mipmap-anydpi-v* folders
+                        if parent_name.starts_with("mipmap-anydpi") {
+                            if let Ok(content) = fs::read_to_string(path) {
+                                if content.contains("<adaptive-icon") {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Preprocess the manifest file to ensure it has required attributes
+/// Returns the path to the processed manifest (either original or temp file)
+fn preprocess_manifest(
+    manifest_path: &Path,
+    package_name: &str,
+    resource_dirs: &[PathBuf],
+    output_dir: &Path,
+) -> Result<PathBuf> {
+    let manifest_content = fs::read_to_string(manifest_path)?;
+    
+    let needs_package = !manifest_content.contains("package=");
+    let needs_min_sdk = has_adaptive_icon_resources(resource_dirs) 
+        && !manifest_content.contains("<uses-sdk")
+        && !manifest_content.contains("android:minSdkVersion");
+    
+    if !needs_package && !needs_min_sdk {
+        // Manifest is fine, use as-is
+        return Ok(manifest_path.to_path_buf());
+    }
+    
+    // Need to modify the manifest
+    let mut modified_content = manifest_content.clone();
+    
+    if needs_package {
+        warn!("AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"", package_name);
+        // Find the <manifest tag and inject the package attribute
+        if let Some(pos) = modified_content.find("<manifest") {
+            // Find the end of the opening tag
+            if let Some(end_pos) = modified_content[pos..].find('>') {
+                let end_index = pos + end_pos;
+                // Check if this is a self-closing tag or has a newline before >
+                let before_close = &modified_content[pos..end_index];
+                
+                // Insert package attribute before the closing >
+                let insert_pos = end_index;
+                let package_attr = format!("\n    package=\"{}\"", package_name);
+                modified_content.insert_str(insert_pos, &package_attr);
+            }
+        }
+    }
+    
+    if needs_min_sdk {
+        warn!("AndroidManifest.xml is missing minSdkVersion but has adaptive-icon resources, adding <uses-sdk android:minSdkVersion=\"26\" />");
+        // Find the <manifest> closing tag and insert <uses-sdk> after it
+        if let Some(pos) = modified_content.find("<manifest") {
+            if let Some(end_pos) = modified_content[pos..].find('>') {
+                let insert_pos = pos + end_pos + 1;
+                let uses_sdk = "\n    \n    <uses-sdk android:minSdkVersion=\"26\" />";
+                modified_content.insert_str(insert_pos, uses_sdk);
+            }
+        }
+    }
+    
+    // Write to temporary file
+    fs::create_dir_all(output_dir)?;
+    let temp_manifest = output_dir.join(".temp_AndroidManifest.xml");
+    fs::write(&temp_manifest, modified_content)?;
+    
+    Ok(temp_manifest)
 }
 
 /// Main builder for Android skin packages
@@ -175,6 +261,14 @@ impl SkinBuilder {
             cache.save()?;
         }
 
+        // Preprocess manifest to inject package attribute and minSdkVersion if needed
+        let processed_manifest = preprocess_manifest(
+            &self.config.manifest_path,
+            &self.config.package_name,
+            &resource_dirs,
+            &self.config.output_dir,
+        )?;
+
         // Link resources into skin package
         info!("Linking resources...");
         let output_filename = self.config.output_file.as_ref()
@@ -185,7 +279,7 @@ impl SkinBuilder {
 
         let link_result = self.aapt2.link(
             &flat_files,
-            &self.config.manifest_path,
+            &processed_manifest,
             &self.config.android_jar,
             &output_apk,
             Some(&self.config.package_name),
@@ -194,6 +288,11 @@ impl SkinBuilder {
             self.config.stable_ids_file.as_deref(),
             self.config.package_id.as_deref(),
         )?;
+
+        // Cleanup temporary manifest if created
+        if processed_manifest != self.config.manifest_path {
+            fs::remove_file(&processed_manifest).ok();
+        }
 
         // Cleanup AAR extraction directories
         if !aar_infos.is_empty() {
