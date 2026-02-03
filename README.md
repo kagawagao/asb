@@ -183,6 +183,7 @@ project/
 - `--version-name <string>` - 版本名称
 - `--stable-ids <path>` - stable IDs 文件路径
 - `--workers <number>` - 并行工作线程数（默认为 CPU 核心数）
+- `--package-id <id>` - 资源包 ID（如 "0x7f"），用于动态资源加载
 
 **说明:**
 - 所有参数都是可选的
@@ -280,7 +281,8 @@ asb init --dir ./my-skin-project
   ],
   "compiledDir": "./build/compiled",
   "stableIdsFile": "./stable-ids.txt",
-  "parallelWorkers": 8
+  "parallelWorkers": 8,
+  "packageId": "0x7f"
 }
 ```
 
@@ -303,6 +305,7 @@ asb init --dir ./my-skin-project
 | `compiledDir` | string | No | 编译产物目录（默认 outputDir/compiled） |
 | `stableIdsFile` | string | No | stable IDs 文件路径，用于保持资源 ID 稳定 |
 | `parallelWorkers` | number | No | 并行工作线程数（默认为 CPU 核心数） |
+| `packageId` | string | No | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"） |
 
 ## Performance / 性能特性
 
@@ -325,6 +328,43 @@ ASB 使用 Rust 的 Rayon 库实现并行资源编译：
 - 使用 aapt2 的 `--stable-ids` 和 `--emit-ids` 参数
 - 确保每次编译生成的资源 ID 保持一致
 - 对于热更新场景至关重要
+
+### Package ID / 资源包 ID
+
+**重要提示：** 从版本 2.0.0 起，ASB 支持配置 Package ID 来解决动态资源加载问题。
+
+Android 资源 ID 格式为 `0xPPTTEEEE`，其中：
+- `PP` = Package ID（包标识）
+- `TT` = Type ID（类型标识，如 color、string）
+- `EEEE` = Entry ID（条目标识）
+
+**为什么需要设置 Package ID？**
+
+当通过 Android 的 `new Resources()` API 动态加载皮肤包时，必须正确设置 Package ID，否则会导致所有资源 ID 无效（invalid resourceId）。
+
+**默认值：**
+- ASB 默认使用 `0x7f` 作为 Package ID（标准 Android 应用的 Package ID）
+- 这确保皮肤包可以通过 `new Resources()` 正常加载
+
+**自定义 Package ID：**
+
+通过配置文件：
+```json
+{
+  "packageId": "0x7f",
+  ...
+}
+```
+
+或通过命令行参数：
+```bash
+asb build --package-id 0x7f
+```
+
+**使用场景：**
+- `0x7f`: 标准应用包（推荐用于动态加载）
+- `0x7e`: 某些特殊插件化场景
+- 其他值：根据具体插件化框架要求
 
 ## Use Cases / 使用场景
 
