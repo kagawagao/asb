@@ -494,6 +494,8 @@ asb build --aapt2 /path/to/aapt2 ...
 
 检查资源文件格式是否正确，使用 `asb version` 确认 aapt2 可用。
 
+**Note**: `styles.xml` and `attrs.xml` files are automatically ignored during compilation to prevent aapt2 link errors in resource-only packages. These files typically define custom attributes and styles that may not be compatible with standalone skin packages.
+
 ### 并发问题
 
 如果遇到并发相关问题，可以限制工作线程数：
