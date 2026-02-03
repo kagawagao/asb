@@ -612,9 +612,20 @@ impl SkinBuilder {
             }
             
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !name.starts_with('.') && name != "Thumbs.db" {
-                    files.push(path.to_path_buf());
+                // Skip hidden files, system files, and problematic files
+                if name.starts_with('.') || name == "Thumbs.db" {
+                    continue;
                 }
+                
+                // Skip styles.xml and attrs.xml as they can cause aapt2 link errors
+                // in resource-only packages when they define custom attributes or
+                // reference styles that don't exist in the standalone package
+                if name == "styles.xml" || name == "attrs.xml" {
+                    debug!("Skipping {} to avoid aapt2 link errors in resource-only package", name);
+                    continue;
+                }
+                
+                files.push(path.to_path_buf());
             }
         }
 
@@ -766,6 +777,61 @@ mod tests {
         assert!(files.contains(&colors_xml), "Should include colors.xml");
         assert!(files.contains(&icon_png), "Should include icon.png");
         assert!(files.contains(&activity_xml), "Should include activity_main.xml");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_ignore_styles_and_attrs_xml() -> Result<()> {
+        // Create a temporary directory structure
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        let values_dir = res_dir.join("values");
+        fs::create_dir_all(&values_dir)?;
+        
+        // Create valid resource files
+        let strings_xml = values_dir.join("strings.xml");
+        let colors_xml = values_dir.join("colors.xml");
+        fs::write(&strings_xml, "<resources><string name=\"app_name\">Test</string></resources>")?;
+        fs::write(&colors_xml, "<resources><color name=\"primary\">#FF0000</color></resources>")?;
+        
+        // Create styles.xml and attrs.xml that should be ignored
+        let styles_xml = values_dir.join("styles.xml");
+        let attrs_xml = values_dir.join("attrs.xml");
+        fs::write(&styles_xml, "<resources><style name=\"AppTheme\"></style></resources>")?;
+        fs::write(&attrs_xml, "<resources><declare-styleable name=\"Custom\"></declare-styleable></resources>")?;
+        
+        // Create config for testing
+        let config = BuildConfig {
+            resource_dir: res_dir.clone(),
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test".to_string(),
+            aapt2_path: None,
+            android_jar: PathBuf::from("/fake/android.jar"),
+            aar_files: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+        
+        let builder = SkinBuilder::new(config)?;
+        let files = builder.find_resource_files(&res_dir)?;
+        
+        // Should only find strings.xml and colors.xml, not styles.xml or attrs.xml
+        assert_eq!(files.len(), 2, "Should find 2 valid resource files (excluding styles.xml and attrs.xml)");
+        assert!(files.contains(&strings_xml), "Should include strings.xml");
+        assert!(files.contains(&colors_xml), "Should include colors.xml");
+        assert!(!files.contains(&styles_xml), "Should NOT include styles.xml");
+        assert!(!files.contains(&attrs_xml), "Should NOT include attrs.xml");
         
         Ok(())
     }
