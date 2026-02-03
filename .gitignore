@@ -49,3 +49,7 @@ coverage/
 # Skin packages
 *.skin
 
+# Example build outputs
+examples/*/build/
+examples/*/compiled/
+

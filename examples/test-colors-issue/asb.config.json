@@ -1,0 +1,18 @@
+{
+  "baseDir": "./",
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "apps": [
+    {
+      "baseDir": "./base",
+      "packageName": "com.example.skin.base",
+      "outputFile": "base.skin"
+    },
+    {
+      "baseDir": "./feature",
+      "packageName": "com.example.skin.feature",
+      "additionalResourceDirs": ["./base/res"],
+      "outputFile": "feature.skin"
+    }
+  ]
+}
