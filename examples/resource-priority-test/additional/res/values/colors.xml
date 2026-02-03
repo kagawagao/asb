@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Override primary color again (should win) -->
+    <color name="primary_color">#0000FF</color>
+    <!-- Add new color -->
+    <color name="new_color">#FFFF00</color>
+</resources>
