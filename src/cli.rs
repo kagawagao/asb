@@ -6,7 +6,8 @@ use tracing::{error, info, warn};
 
 use crate::aapt2::Aapt2;
 use crate::builder::SkinBuilder;
-use crate::dependency::group_configs_by_dependencies;
+use crate::cache::CommonDependencyCache;
+use crate::dependency::{extract_common_dependencies, group_configs_by_dependencies};
 use crate::types::BuildConfig;
 
 #[derive(Parser)]
@@ -285,6 +286,65 @@ impl Cli {
             );
 
             let start_time = std::time::Instant::now();
+
+            // Extract common dependencies
+            let common_deps = extract_common_dependencies(&build_configs);
+            
+            if !common_deps.is_empty() {
+                info!("Found {} common dependencies to compile first", common_deps.len());
+                
+                // Determine cache directory for common dependencies
+                let common_cache_dir = build_configs[0].cache_dir.clone()
+                    .unwrap_or_else(|| build_configs[0].output_dir.join(".build-cache"))
+                    .join("common-deps");
+                
+                // Initialize common dependency cache
+                let mut common_dep_cache = CommonDependencyCache::new(common_cache_dir.clone())?;
+                common_dep_cache.init()?;
+                
+                // Compile common dependencies
+                for common_dep in &common_deps {
+                    info!(
+                        "Compiling common dependency: {} (used by {} apps)",
+                        common_dep.resource_dir.display(),
+                        common_dep.dependent_configs.len()
+                    );
+                    
+                    // Check if we need to recompile
+                    let needs_recompile = common_dep_cache.needs_recompile(&common_dep.resource_dir)?;
+                    
+                    if needs_recompile {
+                        // Compile the common dependency
+                        let compiled_dir = common_cache_dir.join("compiled");
+                        std::fs::create_dir_all(&compiled_dir)?;
+                        
+                        // Use aapt2 to compile resources
+                        let aapt2 = Aapt2::new(build_configs[0].aapt2_path.clone())?;
+                        let compile_result = aapt2.compile_dir(&common_dep.resource_dir, &compiled_dir)?;
+                        
+                        if compile_result.success {
+                            info!(
+                                "  ✓ Compiled {} resources into {} flat files",
+                                common_dep.resource_dir.display(),
+                                compile_result.flat_files.len()
+                            );
+                            
+                            // Update cache
+                            common_dep_cache.update_entry(&common_dep.resource_dir, compile_result.flat_files)?;
+                        } else {
+                            error!("  ✗ Failed to compile common dependency: {}", common_dep.resource_dir.display());
+                            for err in &compile_result.errors {
+                                error!("    {}", err);
+                            }
+                        }
+                    } else {
+                        info!("  ✓ Using cached compiled resources for {}", common_dep.resource_dir.display());
+                    }
+                }
+                
+                // Save common dependency cache
+                common_dep_cache.save()?;
+            }
 
             // Group configs by dependencies
             let (independent_configs, dependent_groups) =

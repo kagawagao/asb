@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use anyhow::Result;
+use tracing::info;
 
 use crate::types::BuildConfig;
 
@@ -9,6 +10,15 @@ use crate::types::BuildConfig;
 pub struct ConfigWithIndex {
     pub index: usize,
     pub config: BuildConfig,
+}
+
+/// Represents common dependencies shared across multiple configurations
+#[derive(Debug, Clone)]
+pub struct CommonDependency {
+    /// The resource directory path
+    pub resource_dir: PathBuf,
+    /// Indices of configurations that depend on this resource directory
+    pub dependent_configs: Vec<usize>,
 }
 
 /// Group configurations by their dependencies based on shared resource directories
@@ -199,6 +209,77 @@ fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>
     }
     
     Ok(sorted)
+}
+
+/// Extract common dependencies from multiple configurations
+/// 
+/// Analyzes all configurations to identify resource directories that are used by multiple apps
+/// as additional resource directories. These are considered common dependencies that should be
+/// compiled separately and cached for reuse.
+/// 
+/// # Arguments
+/// 
+/// * `configs` - The list of build configurations to analyze
+/// 
+/// # Returns
+/// 
+/// A vector of CommonDependency structs, each representing a resource directory that is
+/// shared by multiple configurations
+pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDependency> {
+    if configs.len() <= 1 {
+        return vec![];
+    }
+    
+    // Map of normalized resource directory paths to the configurations that reference them
+    let mut resource_usage: HashMap<String, Vec<usize>> = HashMap::new();
+    
+    // Track which resource directories are main resource dirs (not common dependencies)
+    let mut main_resource_dirs: HashSet<String> = HashSet::new();
+    
+    // First pass: collect main resource directories
+    for config in configs.iter() {
+        let main_res = normalize_path(&config.resource_dir);
+        main_resource_dirs.insert(main_res.clone());
+    }
+    
+    // Second pass: collect additional resource directory usage
+    for (idx, config) in configs.iter().enumerate() {
+        if let Some(additional_dirs) = &config.additional_resource_dirs {
+            for dir in additional_dirs {
+                let normalized = normalize_path(dir);
+                // Only track if this is a main resource dir of another config
+                if main_resource_dirs.contains(&normalized) {
+                    resource_usage.entry(normalized).or_insert_with(Vec::new).push(idx);
+                }
+            }
+        }
+    }
+    
+    // Extract common dependencies (resource dirs used by multiple configs)
+    let mut common_deps = Vec::new();
+    
+    for (resource_path, dependent_indices) in resource_usage {
+        if dependent_indices.len() > 1 {
+            // This is a common dependency used by multiple configurations
+            // Find the original PathBuf for this resource directory
+            if let Some(path_buf) = configs.iter()
+                .find(|c| normalize_path(&c.resource_dir) == resource_path)
+                .map(|c| c.resource_dir.clone())
+            {
+                info!(
+                    "Found common dependency: {} (used by {} configs)",
+                    path_buf.display(),
+                    dependent_indices.len()
+                );
+                common_deps.push(CommonDependency {
+                    resource_dir: path_buf,
+                    dependent_configs: dependent_indices,
+                });
+            }
+        }
+    }
+    
+    common_deps
 }
 
 #[cfg(test)]
@@ -476,5 +557,199 @@ mod tests {
         // Verify independent config
         assert_eq!(independent[0].index, 0);
         assert_eq!(independent[0].config.package_name, "com.example.independent");
+    }
+
+    #[test]
+    fn test_extract_common_dependencies_none() {
+        // Single config should have no common dependencies
+        let config = BuildConfig::default_config();
+        let common_deps = extract_common_dependencies(&[config]);
+        assert_eq!(common_deps.len(), 0);
+    }
+
+    #[test]
+    fn test_extract_common_dependencies_single_shared() {
+        // Base config
+        let base_config = BuildConfig {
+            resource_dir: PathBuf::from("./base/res"),
+            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.base".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        // Feature1 depends on base
+        let feature1_config = BuildConfig {
+            resource_dir: PathBuf::from("./feature1/res"),
+            manifest_path: PathBuf::from("./feature1/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.feature1".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        // Feature2 also depends on base
+        let feature2_config = BuildConfig {
+            resource_dir: PathBuf::from("./feature2/res"),
+            manifest_path: PathBuf::from("./feature2/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.feature2".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        let configs = vec![base_config, feature1_config, feature2_config];
+        let common_deps = extract_common_dependencies(&configs);
+
+        // Should find base/res as a common dependency
+        assert_eq!(common_deps.len(), 1);
+        assert_eq!(common_deps[0].resource_dir, PathBuf::from("./base/res"));
+        assert_eq!(common_deps[0].dependent_configs.len(), 2);
+        assert!(common_deps[0].dependent_configs.contains(&1));
+        assert!(common_deps[0].dependent_configs.contains(&2));
+    }
+
+    #[test]
+    fn test_extract_common_dependencies_multiple_shared() {
+        // Core config
+        let core_config = BuildConfig {
+            resource_dir: PathBuf::from("./core/res"),
+            manifest_path: PathBuf::from("./core/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.core".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        // Shared config
+        let shared_config = BuildConfig {
+            resource_dir: PathBuf::from("./shared/res"),
+            manifest_path: PathBuf::from("./shared/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.shared".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        // App1 depends on both core and shared
+        let app1_config = BuildConfig {
+            resource_dir: PathBuf::from("./app1/res"),
+            manifest_path: PathBuf::from("./app1/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.app1".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![
+                PathBuf::from("./core/res"),
+                PathBuf::from("./shared/res"),
+            ]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        // App2 depends on both core and shared
+        let app2_config = BuildConfig {
+            resource_dir: PathBuf::from("./app2/res"),
+            manifest_path: PathBuf::from("./app2/AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: "com.example.app2".to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: Some(vec![
+                PathBuf::from("./core/res"),
+                PathBuf::from("./shared/res"),
+            ]),
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+        };
+
+        let configs = vec![core_config, shared_config, app1_config, app2_config];
+        let common_deps = extract_common_dependencies(&configs);
+
+        // Should find both core/res and shared/res as common dependencies
+        assert_eq!(common_deps.len(), 2);
+        
+        // Check that both are found (order may vary)
+        let core_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./core/res"));
+        let shared_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./shared/res"));
+        
+        assert!(core_dep.is_some());
+        assert!(shared_dep.is_some());
+        
+        // Both should have 2 dependents (app1 and app2)
+        assert_eq!(core_dep.unwrap().dependent_configs.len(), 2);
+        assert_eq!(shared_dep.unwrap().dependent_configs.len(), 2);
     }
 }
