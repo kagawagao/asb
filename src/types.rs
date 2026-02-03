@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::aapt2::DEFAULT_PACKAGE_ID;
+
 /// Flavor-specific configuration for multi-flavor builds
 /// Each flavor can override app-level configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -479,7 +481,7 @@ impl BuildConfig {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
-            package_id: Some("0x7f".to_string()),
+            package_id: Some(DEFAULT_PACKAGE_ID.to_string()),
         }
     }
 

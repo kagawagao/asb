@@ -5,6 +5,10 @@ use tracing::{debug, info};
 
 use crate::types::{CompileResult, LinkResult};
 
+/// Default Android package ID for standard applications
+/// This is used for dynamic resource loading via new Resources()
+pub const DEFAULT_PACKAGE_ID: &str = "0x7f";
+
 /// Utility for interacting with aapt2
 pub struct Aapt2 {
     aapt2_path: PathBuf,
@@ -299,8 +303,8 @@ impl Aapt2 {
 
         // Set package ID for resource IDs
         // This is critical for dynamic resource loading via new Resources()
-        // Default to 0x7f if not specified (standard app package ID)
-        let pkg_id = package_id.unwrap_or("0x7f");
+        // Default to standard app package ID if not specified
+        let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
         cmd.arg("--package-id").arg(pkg_id);
 
         // Add all flat files
