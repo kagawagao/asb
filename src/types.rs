@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::aapt2::DEFAULT_PACKAGE_ID;
+
 /// Flavor-specific configuration for multi-flavor builds
 /// Each flavor can override app-level configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,11 @@ pub struct FlavorConfig {
     /// Flavor-specific version name override (optional)
     #[serde(rename = "versionName", skip_serializing_if = "Option::is_none")]
     pub version_name: Option<String>,
+
+    /// Flavor-specific package ID override (optional)
+    /// e.g., "0x7f" for standard apps, custom values for dynamic loading
+    #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
+    pub package_id: Option<String>,
 }
 
 /// App-specific configuration in multi-app mode
@@ -100,6 +107,11 @@ pub struct AppConfig {
     /// Each flavor creates a separate build task with potentially different configuration
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub flavors: Option<Vec<FlavorConfig>>,
+
+    /// App-specific package ID override (optional)
+    /// e.g., "0x7f" for standard apps, custom values for dynamic loading
+    #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
+    pub package_id: Option<String>,
 }
 
 /// Multi-app configuration wrapper
@@ -156,6 +168,11 @@ pub struct MultiAppConfig {
     #[serde(rename = "parallelWorkers", skip_serializing_if = "Option::is_none")]
     pub parallel_workers: Option<usize>,
 
+    /// Common package ID setting (optional)
+    /// e.g., "0x7f" for standard apps, custom values for dynamic loading
+    #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
+    pub package_id: Option<String>,
+
     /// Array of app-specific configurations
     pub apps: Vec<AppConfig>,
 }
@@ -179,6 +196,7 @@ impl MultiAppConfig {
         let common_version_name = self.version_name.clone();
         let common_stable_ids_file = self.stable_ids_file.clone();
         let common_parallel_workers = self.parallel_workers;
+        let common_package_id = self.package_id.clone();
         
         for app in self.apps {
             // If app has flavors, create a BuildConfig for each flavor
@@ -199,6 +217,7 @@ impl MultiAppConfig {
                         &common_version_name,
                         &common_stable_ids_file,
                         common_parallel_workers,
+                        &common_package_id,
                     ));
                 }
             } else {
@@ -217,6 +236,7 @@ impl MultiAppConfig {
                     &common_version_name,
                     &common_stable_ids_file,
                     common_parallel_workers,
+                    &common_package_id,
                 ));
             }
         }
@@ -240,6 +260,7 @@ impl MultiAppConfig {
         common_version_name: &Option<String>,
         common_stable_ids_file: &Option<PathBuf>,
         common_parallel_workers: Option<usize>,
+        common_package_id: &Option<String>,
     ) -> BuildConfig {
         // Determine base_dir: app-specific > common
         let base_dir = app.base_dir.clone().or_else(|| common_base_dir.clone());
@@ -271,6 +292,7 @@ impl MultiAppConfig {
             compiled_dir: None,
             stable_ids_file: common_stable_ids_file.clone(),
             parallel_workers: common_parallel_workers,
+            package_id: app.package_id.clone().or_else(|| common_package_id.clone()),
         }
     }
 
@@ -291,6 +313,7 @@ impl MultiAppConfig {
         common_version_name: &Option<String>,
         common_stable_ids_file: &Option<PathBuf>,
         common_parallel_workers: Option<usize>,
+        common_package_id: &Option<String>,
     ) -> BuildConfig {
         // Determine base_dir: flavor > app > common
         let base_dir = flavor.base_dir.clone()
@@ -345,6 +368,9 @@ impl MultiAppConfig {
             compiled_dir: None,
             stable_ids_file: common_stable_ids_file.clone(),
             parallel_workers: common_parallel_workers,
+            package_id: flavor.package_id.clone()
+                .or_else(|| app.package_id.clone())
+                .or_else(|| common_package_id.clone()),
         }
     }
 }
@@ -420,6 +446,12 @@ pub struct BuildConfig {
     /// Number of parallel workers (defaults to number of CPUs)
     #[serde(rename = "parallelWorkers", skip_serializing_if = "Option::is_none")]
     pub parallel_workers: Option<usize>,
+
+    /// Package ID for resources (e.g., "0x7f" for standard apps)
+    /// This is critical for dynamic resource loading via new Resources()
+    /// If not specified, defaults to "0x7f"
+    #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
+    pub package_id: Option<String>,
 }
 
 impl BuildConfig {
@@ -449,6 +481,7 @@ impl BuildConfig {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: Some(DEFAULT_PACKAGE_ID.to_string()),
         }
     }
 
