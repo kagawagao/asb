@@ -587,6 +587,10 @@ impl SkinBuilder {
     /// Find all resource files in a directory
     fn find_resource_files(&self, res_dir: &Path) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
+        
+        // Canonicalize res_dir once for consistent path comparison
+        // This handles relative paths, symlinks, and other path variations
+        let canonical_res_dir = res_dir.canonicalize().unwrap_or_else(|_| res_dir.to_path_buf());
 
         for entry in WalkDir::new(res_dir)
             .into_iter()
@@ -594,6 +598,19 @@ impl SkinBuilder {
             .filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
+            
+            // Skip files that are directly under resourceDir
+            // Valid Android resources must be in subdirectories like res/values/, res/drawable/, etc.
+            if let Some(parent) = path.parent() {
+                // Canonicalize parent for accurate comparison
+                let canonical_parent = parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf());
+                if canonical_parent == canonical_res_dir {
+                    // File is directly under resourceDir, skip it as it's invalid
+                    debug!("Skipping invalid resource file directly under resourceDir: {}", path.display());
+                    continue;
+                }
+            }
+            
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 if !name.starts_with('.') && name != "Thumbs.db" {
                     files.push(path.to_path_buf());
@@ -628,6 +645,128 @@ impl SkinBuilder {
         }
 
         info!("Build artifacts cleaned");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_ignore_files_directly_under_resource_dir() -> Result<()> {
+        // Create a temporary directory structure
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        
+        // Create valid resource structure (res/values/strings.xml)
+        let values_dir = res_dir.join("values");
+        fs::create_dir_all(&values_dir)?;
+        let valid_file = values_dir.join("strings.xml");
+        fs::write(&valid_file, "<?xml version=\"1.0\"?><resources></resources>")?;
+        
+        // Create invalid resource (directly under res/)
+        let invalid_file = res_dir.join("invalid.txt");
+        fs::write(&invalid_file, "This should be ignored")?;
+        
+        // Create another invalid resource (directly under res/)
+        let another_invalid = res_dir.join("readme.md");
+        fs::write(&another_invalid, "# README")?;
+        
+        // Create config for testing
+        let config = BuildConfig {
+            resource_dir: res_dir.clone(),
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test".to_string(),
+            aapt2_path: None,
+            android_jar: PathBuf::from("/fake/android.jar"),
+            aar_files: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+        
+        let builder = SkinBuilder::new(config)?;
+        let files = builder.find_resource_files(&res_dir)?;
+        
+        // Should only find the valid file, not the ones directly under res/
+        assert_eq!(files.len(), 1, "Should only find 1 valid resource file");
+        assert_eq!(files[0], valid_file, "Should find the strings.xml file");
+        assert!(!files.contains(&invalid_file), "Should not include invalid.txt");
+        assert!(!files.contains(&another_invalid), "Should not include readme.md");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_valid_nested_resources_are_included() -> Result<()> {
+        // Create a temporary directory structure
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        
+        // Create various valid resource subdirectories
+        let values_dir = res_dir.join("values");
+        let drawable_dir = res_dir.join("drawable");
+        let layout_dir = res_dir.join("layout");
+        
+        fs::create_dir_all(&values_dir)?;
+        fs::create_dir_all(&drawable_dir)?;
+        fs::create_dir_all(&layout_dir)?;
+        
+        // Create valid resource files
+        let strings_xml = values_dir.join("strings.xml");
+        let colors_xml = values_dir.join("colors.xml");
+        let icon_png = drawable_dir.join("icon.png");
+        let activity_xml = layout_dir.join("activity_main.xml");
+        
+        fs::write(&strings_xml, "<resources></resources>")?;
+        fs::write(&colors_xml, "<resources></resources>")?;
+        fs::write(&icon_png, "fake png data")?;
+        fs::write(&activity_xml, "<LinearLayout></LinearLayout>")?;
+        
+        // Create config for testing
+        let config = BuildConfig {
+            resource_dir: res_dir.clone(),
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test".to_string(),
+            aapt2_path: None,
+            android_jar: PathBuf::from("/fake/android.jar"),
+            aar_files: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+        
+        let builder = SkinBuilder::new(config)?;
+        let files = builder.find_resource_files(&res_dir)?;
+        
+        // Should find all 4 valid files
+        assert_eq!(files.len(), 4, "Should find all 4 valid resource files");
+        assert!(files.contains(&strings_xml), "Should include strings.xml");
+        assert!(files.contains(&colors_xml), "Should include colors.xml");
+        assert!(files.contains(&icon_png), "Should include icon.png");
+        assert!(files.contains(&activity_xml), "Should include activity_main.xml");
+        
         Ok(())
     }
 }
