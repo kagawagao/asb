@@ -232,10 +232,12 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
         return vec![];
     }
     
-    // Map of normalized resource directory paths to the configurations that reference them
-    let mut resource_usage: HashMap<String, Vec<usize>> = HashMap::new();
+    // Map of normalized resource directory paths to:
+    // - the configurations that reference them
+    // - the original PathBuf (to avoid losing the original path)
+    let mut resource_usage: HashMap<String, (Vec<usize>, PathBuf)> = HashMap::new();
     
-    // Track which resource directories are main resource dirs (not common dependencies)
+    // Track which resource directories are main resource dirs
     let mut main_resource_dirs: HashSet<String> = HashSet::new();
     
     // First pass: collect main resource directories
@@ -244,15 +246,16 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
         main_resource_dirs.insert(main_res.clone());
     }
     
-    // Second pass: collect additional resource directory usage
+    // Second pass: collect all additional resource directory usage
     for (idx, config) in configs.iter().enumerate() {
         if let Some(additional_dirs) = &config.additional_resource_dirs {
             for dir in additional_dirs {
                 let normalized = normalize_path(dir);
-                // Only track if this is a main resource dir of another config
-                if main_resource_dirs.contains(&normalized) {
-                    resource_usage.entry(normalized).or_insert_with(Vec::new).push(idx);
-                }
+                // Track all additional resource dirs, not just those that are main dirs
+                resource_usage.entry(normalized)
+                    .or_insert_with(|| (Vec::new(), dir.clone()))
+                    .0
+                    .push(idx);
             }
         }
     }
@@ -260,24 +263,24 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
     // Extract common dependencies (resource dirs used by multiple configs)
     let mut common_deps = Vec::new();
     
-    for (resource_path, dependent_indices) in resource_usage {
+    for (resource_path, (dependent_indices, original_path)) in resource_usage {
         if dependent_indices.len() > 1 {
             // This is a common dependency used by multiple configurations
-            // Find the original PathBuf for this resource directory
-            if let Some(path_buf) = configs.iter()
+            // Prefer using the main resource dir PathBuf if available, otherwise use from additional dirs
+            let path_buf = configs.iter()
                 .find(|c| normalize_path(&c.resource_dir) == resource_path)
                 .map(|c| c.resource_dir.clone())
-            {
-                info!(
-                    "Found common dependency: {} (used by {} configs)",
-                    path_buf.display(),
-                    dependent_indices.len()
-                );
-                common_deps.push(CommonDependency {
-                    resource_dir: path_buf,
-                    dependent_configs: dependent_indices,
-                });
-            }
+                .unwrap_or(original_path);
+            
+            info!(
+                "Found common dependency: {} (used by {} configs)",
+                path_buf.display(),
+                dependent_indices.len()
+            );
+            common_deps.push(CommonDependency {
+                resource_dir: path_buf,
+                dependent_configs: dependent_indices,
+            });
         }
     }
     
@@ -603,5 +606,139 @@ mod tests {
         // The two flavors should be indices 1 and 2 (base is index 0)
         assert!(common_deps[0].dependent_configs.contains(&1));
         assert!(common_deps[0].dependent_configs.contains(&2));
+    }
+
+    #[test]
+    fn test_extract_common_dependencies_across_app_flavors() {
+        use crate::types::{AppConfig, FlavorConfig, MultiAppConfig};
+        
+        // Create config matching the example from the comment:
+        // Two apps (a and b), each with night and day flavors
+        // Both night flavors share ./night/src/main/res
+        // Both day flavors share ./day/src/main/res
+        
+        let app_a = AppConfig {
+            base_dir: Some(PathBuf::from("./a/src/main")),
+            resource_dir: None,
+            manifest_path: None,
+            package_name: "com.a".to_string(),
+            additional_resource_dirs: None,
+            output_dir: None,
+            output_file: None,
+            version_code: None,
+            version_name: None,
+            flavors: Some(vec![
+                FlavorConfig {
+                    name: "night".to_string(),
+                    base_dir: None,
+                    resource_dir: Some(PathBuf::from("./a/src/main/res-night")),
+                    manifest_path: None,
+                    package_name: Some("com.a.night".to_string()),
+                    additional_resource_dirs: Some(vec![PathBuf::from("./night/src/main/res")]),
+                    output_dir: None,
+                    output_file: None,
+                    version_code: None,
+                    version_name: None,
+                    package_id: None,
+                },
+                FlavorConfig {
+                    name: "day".to_string(),
+                    base_dir: None,
+                    resource_dir: Some(PathBuf::from("./a/src/main/res-day")),
+                    manifest_path: None,
+                    package_name: Some("com.a.day".to_string()),
+                    additional_resource_dirs: Some(vec![PathBuf::from("./day/src/main/res")]),
+                    output_dir: None,
+                    output_file: None,
+                    version_code: None,
+                    version_name: None,
+                    package_id: None,
+                },
+            ]),
+            package_id: None,
+        };
+
+        let app_b = AppConfig {
+            base_dir: Some(PathBuf::from("./b/src/main")),
+            resource_dir: None,
+            manifest_path: None,
+            package_name: "com.b".to_string(),
+            additional_resource_dirs: None,
+            output_dir: None,
+            output_file: None,
+            version_code: None,
+            version_name: None,
+            flavors: Some(vec![
+                FlavorConfig {
+                    name: "night".to_string(),
+                    base_dir: None,
+                    resource_dir: Some(PathBuf::from("./b/src/main/res-night")),
+                    manifest_path: None,
+                    package_name: Some("com.b.night".to_string()),
+                    additional_resource_dirs: Some(vec![PathBuf::from("./night/src/main/res")]),
+                    output_dir: None,
+                    output_file: None,
+                    version_code: None,
+                    version_name: None,
+                    package_id: None,
+                },
+                FlavorConfig {
+                    name: "day".to_string(),
+                    base_dir: None,
+                    resource_dir: Some(PathBuf::from("./b/src/main/res-day")),
+                    manifest_path: None,
+                    package_name: Some("com.b.day".to_string()),
+                    additional_resource_dirs: Some(vec![PathBuf::from("./day/src/main/res")]),
+                    output_dir: None,
+                    output_file: None,
+                    version_code: None,
+                    version_name: None,
+                    package_id: None,
+                },
+            ]),
+            package_id: None,
+        };
+
+        let multi_config = MultiAppConfig {
+            base_dir: None,
+            output_dir: PathBuf::from("./build"),
+            output_file: None,
+            android_jar: PathBuf::from("android.jar"),
+            aapt2_path: None,
+            aar_files: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+            apps: vec![app_a, app_b],
+        };
+
+        // Convert to BuildConfigs
+        let configs = multi_config.into_build_configs();
+        
+        // Should have 4 configs: 2 apps × 2 flavors each
+        assert_eq!(configs.len(), 4);
+        
+        // Extract common dependencies
+        let common_deps = extract_common_dependencies(&configs);
+
+        // Should find 2 common dependencies:
+        // - ./night/src/main/res (used by app_a.night and app_b.night)
+        // - ./day/src/main/res (used by app_a.day and app_b.day)
+        assert_eq!(common_deps.len(), 2);
+        
+        // Check that both night and day resources are found
+        let night_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./night/src/main/res"));
+        let day_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./day/src/main/res"));
+        
+        assert!(night_dep.is_some(), "Should find ./night/src/main/res as common dependency");
+        assert!(day_dep.is_some(), "Should find ./day/src/main/res as common dependency");
+        
+        // Each common dependency should be used by 2 configs
+        assert_eq!(night_dep.unwrap().dependent_configs.len(), 2);
+        assert_eq!(day_dep.unwrap().dependent_configs.len(), 2);
     }
 }
