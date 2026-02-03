@@ -507,4 +507,101 @@ mod tests {
         assert_eq!(core_dep.unwrap().dependent_configs.len(), 2);
         assert_eq!(shared_dep.unwrap().dependent_configs.len(), 2);
     }
+
+    #[test]
+    fn test_extract_common_dependencies_from_flavors() {
+        use crate::types::{AppConfig, FlavorConfig, MultiAppConfig};
+        
+        // Base config
+        let base_app = AppConfig {
+            base_dir: None,
+            resource_dir: Some(PathBuf::from("./base/res")),
+            manifest_path: Some(PathBuf::from("./base/AndroidManifest.xml")),
+            package_name: "com.example.base".to_string(),
+            additional_resource_dirs: None,
+            output_dir: None,
+            output_file: None,
+            version_code: None,
+            version_name: None,
+            flavors: None,
+            package_id: None,
+        };
+
+        // App with flavors that both depend on base
+        let app_with_flavors = AppConfig {
+            base_dir: None,
+            resource_dir: Some(PathBuf::from("./app/res")),
+            manifest_path: Some(PathBuf::from("./app/AndroidManifest.xml")),
+            package_name: "com.example.app".to_string(),
+            additional_resource_dirs: None,
+            output_dir: None,
+            output_file: None,
+            version_code: None,
+            version_name: None,
+            flavors: Some(vec![
+                FlavorConfig {
+                    name: "flavor1".to_string(),
+                    base_dir: None,
+                    resource_dir: None,
+                    manifest_path: None,
+                    package_name: None,
+                    additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+                    output_dir: None,
+                    output_file: None,
+                    version_code: None,
+                    version_name: None,
+                    package_id: None,
+                },
+                FlavorConfig {
+                    name: "flavor2".to_string(),
+                    base_dir: None,
+                    resource_dir: None,
+                    manifest_path: None,
+                    package_name: None,
+                    additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
+                    output_dir: None,
+                    output_file: None,
+                    version_code: None,
+                    version_name: None,
+                    package_id: None,
+                },
+            ]),
+            package_id: None,
+        };
+
+        let multi_config = MultiAppConfig {
+            base_dir: None,
+            output_dir: PathBuf::from("./build"),
+            output_file: None,
+            android_jar: PathBuf::from("android.jar"),
+            aapt2_path: None,
+            aar_files: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+            apps: vec![base_app, app_with_flavors],
+        };
+
+        // Convert to BuildConfigs
+        let configs = multi_config.into_build_configs();
+        
+        // Should have 3 configs: 1 base + 2 flavors
+        assert_eq!(configs.len(), 3);
+        
+        // Extract common dependencies
+        let common_deps = extract_common_dependencies(&configs);
+
+        // Should find base/res as a common dependency (used by both flavors)
+        assert_eq!(common_deps.len(), 1);
+        assert_eq!(common_deps[0].resource_dir, PathBuf::from("./base/res"));
+        assert_eq!(common_deps[0].dependent_configs.len(), 2);
+        
+        // The two flavors should be indices 1 and 2 (base is index 0)
+        assert!(common_deps[0].dependent_configs.contains(&1));
+        assert!(common_deps[0].dependent_configs.contains(&2));
+    }
 }
