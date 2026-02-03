@@ -232,6 +232,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
         
         let config2 = BuildConfig {
@@ -251,6 +252,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
         
         let configs = vec![config1, config2];
@@ -281,6 +283,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         // Feature config that depends on base
@@ -301,6 +304,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         let configs = vec![base_config, feature_config];
@@ -338,6 +342,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         // Feature1 depends on base
@@ -358,6 +363,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         // Feature2 also depends on base
@@ -378,6 +384,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         let configs = vec![base_config, feature1_config, feature2_config];
@@ -413,6 +420,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         // Base config
@@ -433,6 +441,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         // Feature depends on base
@@ -453,6 +462,7 @@ mod tests {
             compiled_dir: None,
             stable_ids_file: None,
             parallel_workers: None,
+            package_id: None,
         };
 
         let configs = vec![independent_config, base_config, feature_config];

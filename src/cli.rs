@@ -73,6 +73,11 @@ pub enum Commands {
         /// Number of parallel workers
         #[arg(long)]
         workers: Option<usize>,
+
+        /// Package ID for resources (e.g., "0x7f")
+        /// Critical for dynamic resource loading via new Resources()
+        #[arg(long)]
+        package_id: Option<String>,
     },
 
     /// Clean build artifacts
@@ -118,6 +123,7 @@ impl Cli {
                 version_name,
                 stable_ids,
                 workers,
+                package_id,
             } => {
                 Self::run_build(
                     config,
@@ -133,6 +139,7 @@ impl Cli {
                     version_name,
                     stable_ids,
                     workers,
+                    package_id,
                 )
                 .await
             }
@@ -156,6 +163,7 @@ impl Cli {
         version_name: Option<String>,
         stable_ids: Option<PathBuf>,
         workers: Option<usize>,
+        package_id: Option<String>,
     ) -> Result<()> {
         // Check if CLI arguments are provided
         let has_cli_args = resource_dir.is_some()
@@ -169,7 +177,8 @@ impl Cli {
             || version_code.is_some()
             || version_name.is_some()
             || stable_ids.is_some()
-            || workers.is_some();
+            || workers.is_some()
+            || package_id.is_some();
 
         // Check if using defaults before moving config_file
         let using_defaults = config_file.is_none() && !PathBuf::from("./asb.config.json").exists();
@@ -226,6 +235,9 @@ impl Cli {
                 }
                 if let Some(w) = workers {
                     build_config.parallel_workers = Some(w);
+                }
+                if let Some(ref pid) = package_id {
+                    build_config.package_id = Some(pid.clone());
                 }
             }
         }

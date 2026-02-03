@@ -192,6 +192,7 @@ impl SkinBuilder {
             self.config.version_code,
             self.config.version_name.as_deref(),
             self.config.stable_ids_file.as_deref(),
+            self.config.package_id.as_deref(),
         )?;
 
         // Cleanup AAR extraction directories
