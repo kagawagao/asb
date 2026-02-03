@@ -297,7 +297,8 @@ impl SkinBuilder {
                     // Skip values resources - they are already compiled into resources.arsc
                     // According to Android packaging principles, values resources (colors, strings, dimens, etc.)
                     // should only exist in the compiled binary format (resources.arsc), not as raw XML files
-                    if zip_path.starts_with("res/values") {
+                    // This includes both "res/values/" and qualified variants like "res/values-en/", "res/values-hdpi/", etc.
+                    if zip_path.starts_with("res/values/") || zip_path.starts_with("res/values-") {
                         continue;
                     }
 
