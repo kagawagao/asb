@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default theme colors -->
+    <color name="default_primary">#FF2196F3</color>
+    <color name="default_background">#FFFFFFFF</color>
+    <color name="default_text">#FF000000</color>
+</resources>

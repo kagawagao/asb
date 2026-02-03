@@ -4,7 +4,35 @@ This directory contains example projects demonstrating different use cases of th
 
 ## Examples
 
-### 1. Simple Skin (`simple-skin/`)
+### 1. Android Skin Loader Test (`android-skin-loader-test/`)
+
+**最重要的示例** - 一个完整的 Android 测试项目，演示如何正确加载 ASB 生成的皮肤包，以及如何解决 `Resources.getIdentifier()` 返回 0 的问题。
+
+**Features:**
+- 完整的 Android 应用代码（MainActivity + SkinLoader）
+- 详细的问题分析文档（ANALYSIS.md）
+- Package ID 配置示例
+- 资源加载最佳实践
+- 运行时测试和验证
+
+**包含内容:**
+- 皮肤包资源定义（colors.xml, strings.xml）
+- Android 应用实现（加载器 + UI）
+- ASB 配置（正确的 packageId 设置）
+- 构建和测试脚本
+- 完整的故障排除指南
+
+**Use case:** 
+- 理解 Android 资源 Package ID 机制
+- 解决 getIdentifier() 返回 0 的问题
+- 学习正确的皮肤包加载方法
+- 真机测试皮肤加载功能
+
+**重要文档:**
+- [README.md](./android-skin-loader-test/README.md) - 项目说明和使用指南
+- [ANALYSIS.md](./android-skin-loader-test/ANALYSIS.md) - 问题根本原因分析
+
+### 2. Simple Skin (`simple-skin/`)
 
 A basic example showing how to create a simple skin package with colors and strings.
 
@@ -15,7 +43,7 @@ A basic example showing how to create a simple skin package with colors and stri
 
 **Use case:** Getting started with asb, creating basic theme packages
 
-### 2. Multi-Theme Skin (`multi-theme/`)
+### 3. Multi-Theme Skin (`multi-theme/`)
 
 An advanced example demonstrating day/night theme support with multiple resource qualifiers.
 
@@ -26,7 +54,7 @@ An advanced example demonstrating day/night theme support with multiple resource
 
 **Use case:** Creating adaptive themes that respond to system settings
 
-### 3. Full Android Multi-Module App (`full-android-app/`)
+### 4. Full Android Multi-Module App (`full-android-app/`)
 
 A comprehensive, realistic Android project with multiple feature modules demonstrating enterprise-level skin packaging.
 

@@ -287,6 +287,7 @@ impl Aapt2 {
 
         if let Some(pkg) = package_name {
             cmd.arg("--rename-manifest-package").arg(pkg);
+            cmd.arg("--rename-resources-package").arg(pkg);
         }
 
         if let Some(code) = version_code {
