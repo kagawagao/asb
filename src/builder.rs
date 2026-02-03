@@ -294,6 +294,13 @@ impl SkinBuilder {
                 if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
                     let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
 
+                    // Skip values resources - they are already compiled into resources.arsc
+                    // According to Android packaging principles, values resources (colors, strings, dimens, etc.)
+                    // should only exist in the compiled binary format (resources.arsc), not as raw XML files
+                    if zip_path.starts_with("res/values") {
+                        continue;
+                    }
+
                     // Skip if already added (handles duplicate files across directories)
                     if added_files.contains(&zip_path) {
                         continue;
