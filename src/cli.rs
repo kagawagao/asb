@@ -19,6 +19,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Commands {
     /// Build a skin package from resources
     Build {
@@ -149,6 +150,7 @@ impl Cli {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run_build(
         config_file: Option<PathBuf>,
         resource_dir: Option<PathBuf>,
@@ -248,7 +250,8 @@ impl Cli {
             for (idx, build_config) in build_configs.iter_mut().enumerate() {
                 // Only set if not explicitly configured
                 if build_config.compiled_dir.is_none() {
-                    let unique_compiled_dir = build_config.output_dir.join(format!("compiled_{}", idx));
+                    let unique_compiled_dir =
+                        build_config.output_dir.join(format!("compiled_{}", idx));
                     build_config.compiled_dir = Some(unique_compiled_dir);
                 }
             }
@@ -302,21 +305,24 @@ impl Cli {
 
             // Build independent configs in parallel
             if !independent_configs.is_empty() {
-                info!("Building {} independent configs in parallel...", independent_configs.len());
-                
+                info!(
+                    "Building {} independent configs in parallel...",
+                    independent_configs.len()
+                );
+
                 let mut tasks = tokio::task::JoinSet::new();
-                
+
                 for config_with_idx in independent_configs {
                     let idx = config_with_idx.index;
                     let config = config_with_idx.config.clone();
-                    
+
                     tasks.spawn(async move {
                         let mut builder = SkinBuilder::new(config)?;
                         let result = builder.build().await?;
                         Ok::<_, anyhow::Error>((idx, result))
                     });
                 }
-                
+
                 while let Some(result) = tasks.join_next().await {
                     match result {
                         Ok(Ok((idx, build_result))) => {
@@ -369,16 +375,8 @@ impl Cli {
 
             // Display results
             println!("\n{}", "Build Summary:".blue().bold());
-            println!(
-                "  {}: {}",
-                "Successful".green(),
-                success_count
-            );
-            println!(
-                "  {}: {}",
-                "Failed".red(),
-                fail_count
-            );
+            println!("  {}: {}", "Successful".green(), success_count);
+            println!("  {}: {}", "Failed".red(), fail_count);
             println!("  {}: {:.2}s", "Total time".cyan(), elapsed.as_secs_f64());
 
             // Show individual results
@@ -386,7 +384,12 @@ impl Cli {
             for (idx, result) in &all_results {
                 if result.success {
                     if let Some(ref apk_path) = result.apk_path {
-                        println!("  {} Config #{}: {}", "✓".green(), idx + 1, apk_path.display());
+                        println!(
+                            "  {} Config #{}: {}",
+                            "✓".green(),
+                            idx + 1,
+                            apk_path.display()
+                        );
                     } else {
                         println!("  {} Config #{}", "✓".green(), idx + 1);
                     }
@@ -467,7 +470,10 @@ impl Cli {
             "{}",
             format!("✓ Configuration file created: {}", config_path.display()).green()
         );
-        println!("\n{}", "Default configuration uses standard Android project structure:".cyan());
+        println!(
+            "\n{}",
+            "Default configuration uses standard Android project structure:".cyan()
+        );
         println!("  {}: src/main/res/", "Resources".white());
         println!("  {}: src/main/AndroidManifest.xml", "Manifest".white());
         println!("  {}: build/outputs/skin/", "Output".white());

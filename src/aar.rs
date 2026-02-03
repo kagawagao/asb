@@ -17,7 +17,11 @@ impl AarExtractor {
 
         std::fs::create_dir_all(extract_dir)?;
 
-        debug!("Extracting AAR: {} to {}", aar_path.display(), extract_dir.display());
+        debug!(
+            "Extracting AAR: {} to {}",
+            aar_path.display(),
+            extract_dir.display()
+        );
 
         // Extract ZIP
         let file = File::open(aar_path)
@@ -46,7 +50,11 @@ impl AarExtractor {
 
         Ok(AarInfo {
             path: aar_path.to_path_buf(),
-            resource_dir: if res_dir.exists() { Some(res_dir) } else { None },
+            resource_dir: if res_dir.exists() {
+                Some(res_dir)
+            } else {
+                None
+            },
             manifest_path: if manifest_path.exists() {
                 Some(manifest_path)
             } else {

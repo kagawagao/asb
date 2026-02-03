@@ -16,10 +16,7 @@ pub struct SkinMerger;
 
 impl SkinMerger {
     /// Merge multiple module APKs into a single file
-    pub fn merge_packages(
-        packages: &[ModuleSkinPackage],
-        output_path: &Path,
-    ) -> Result<()> {
+    pub fn merge_packages(packages: &[ModuleSkinPackage], output_path: &Path) -> Result<()> {
         info!("Merging {} module packages...", packages.len());
 
         // Validate module names to prevent injection attacks
@@ -45,8 +42,12 @@ impl SkinMerger {
         // For each module, write: module_name|size|data
         for package in packages {
             let mut apk_data = Vec::new();
-            let mut file = File::open(&package.apk_path)
-                .with_context(|| format!("Failed to open skin package: {}", package.apk_path.display()))?;
+            let mut file = File::open(&package.apk_path).with_context(|| {
+                format!(
+                    "Failed to open skin package: {}",
+                    package.apk_path.display()
+                )
+            })?;
             file.read_to_end(&mut apk_data)?;
 
             // Write module metadata
@@ -67,22 +68,25 @@ impl SkinMerger {
     }
 
     /// Extract individual modules from a merged package
-    pub fn extract_modules(merged_path: &Path, output_dir: &Path) -> Result<Vec<ModuleSkinPackage>> {
+    pub fn extract_modules(
+        merged_path: &Path,
+        output_dir: &Path,
+    ) -> Result<Vec<ModuleSkinPackage>> {
         let mut file = File::open(merged_path)?;
         let mut content = Vec::new();
         file.read_to_end(&mut content)?;
 
         // Read header line (text)
-        let mut offset = 0;
-        let header_end = content.iter()
+        let header_end = content
+            .iter()
             .position(|&b| b == b'\n')
             .context("Missing header line")?;
         let header = std::str::from_utf8(&content[..header_end])?;
-        
+
         if !header.starts_with("ASB_MERGED_V1") {
             anyhow::bail!("Invalid merged package format");
         }
-        offset = header_end + 1;
+        let mut offset = header_end + 1;
 
         // Read count line (text)
         let count_end = content[offset..]

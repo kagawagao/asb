@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::aapt2::DEFAULT_PACKAGE_ID;
 
@@ -182,7 +182,7 @@ impl MultiAppConfig {
     /// Merges common fields with app-specific fields and expands flavors
     pub fn into_build_configs(self) -> Vec<BuildConfig> {
         let mut result = Vec::new();
-        
+
         // Store common config fields that will be shared
         let common_base_dir = self.base_dir.clone();
         let common_output_dir = self.output_dir.clone();
@@ -197,14 +197,14 @@ impl MultiAppConfig {
         let common_stable_ids_file = self.stable_ids_file.clone();
         let common_parallel_workers = self.parallel_workers;
         let common_package_id = self.package_id.clone();
-        
+
         for app in self.apps {
             // If app has flavors, create a BuildConfig for each flavor
             if let Some(ref flavors) = app.flavors {
                 for flavor in flavors {
                     result.push(Self::create_build_config_for_flavor_static(
                         &app,
-                        &flavor,
+                        flavor,
                         &common_base_dir,
                         &common_output_dir,
                         &common_output_file,
@@ -240,7 +240,7 @@ impl MultiAppConfig {
                 ));
             }
         }
-        
+
         result
     }
 
@@ -249,9 +249,9 @@ impl MultiAppConfig {
     fn create_build_config_static(
         app: &AppConfig,
         common_base_dir: &Option<PathBuf>,
-        common_output_dir: &PathBuf,
+        common_output_dir: &Path,
         common_output_file: &Option<String>,
-        common_android_jar: &PathBuf,
+        common_android_jar: &Path,
         common_aapt2_path: &Option<PathBuf>,
         common_aar_files: &Option<Vec<PathBuf>>,
         common_incremental: Option<bool>,
@@ -264,30 +264,43 @@ impl MultiAppConfig {
     ) -> BuildConfig {
         // Determine base_dir: app-specific > common
         let base_dir = app.base_dir.clone().or_else(|| common_base_dir.clone());
-        
+
         // Determine resource_dir with defaults
-        let resource_dir = app.resource_dir.clone().or_else(|| {
-            base_dir.as_ref().map(|bd| bd.join("res"))
-        }).expect("resourceDir must be specified or derivable from baseDir");
-        
+        let resource_dir = app
+            .resource_dir
+            .clone()
+            .or_else(|| base_dir.as_ref().map(|bd| bd.join("res")))
+            .expect("resourceDir must be specified or derivable from baseDir");
+
         // Determine manifest_path with defaults
-        let manifest_path = app.manifest_path.clone().or_else(|| {
-            base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml"))
-        }).expect("manifestPath must be specified or derivable from baseDir");
-        
+        let manifest_path = app
+            .manifest_path
+            .clone()
+            .or_else(|| base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml")))
+            .expect("manifestPath must be specified or derivable from baseDir");
+
         BuildConfig {
             resource_dir,
             manifest_path,
-            output_dir: app.output_dir.clone().unwrap_or_else(|| common_output_dir.clone()),
-            output_file: app.output_file.clone().or_else(|| common_output_file.clone()),
+            output_dir: app
+                .output_dir
+                .clone()
+                .unwrap_or_else(|| common_output_dir.to_path_buf()),
+            output_file: app
+                .output_file
+                .clone()
+                .or_else(|| common_output_file.clone()),
             package_name: app.package_name.clone(),
             aapt2_path: common_aapt2_path.clone(),
-            android_jar: common_android_jar.clone(),
+            android_jar: common_android_jar.to_path_buf(),
             aar_files: common_aar_files.clone(),
             incremental: common_incremental,
             cache_dir: common_cache_dir.clone(),
             version_code: app.version_code.or(common_version_code),
-            version_name: app.version_name.clone().or_else(|| common_version_name.clone()),
+            version_name: app
+                .version_name
+                .clone()
+                .or_else(|| common_version_name.clone()),
             additional_resource_dirs: app.additional_resource_dirs.clone(),
             compiled_dir: None,
             stable_ids_file: common_stable_ids_file.clone(),
@@ -302,9 +315,9 @@ impl MultiAppConfig {
         app: &AppConfig,
         flavor: &FlavorConfig,
         common_base_dir: &Option<PathBuf>,
-        common_output_dir: &PathBuf,
+        common_output_dir: &Path,
         common_output_file: &Option<String>,
-        common_android_jar: &PathBuf,
+        common_android_jar: &Path,
         common_aapt2_path: &Option<PathBuf>,
         common_aar_files: &Option<Vec<PathBuf>>,
         common_incremental: Option<bool>,
@@ -316,59 +329,78 @@ impl MultiAppConfig {
         common_package_id: &Option<String>,
     ) -> BuildConfig {
         // Determine base_dir: flavor > app > common
-        let base_dir = flavor.base_dir.clone()
+        let base_dir = flavor
+            .base_dir
+            .clone()
             .or_else(|| app.base_dir.clone())
             .or_else(|| common_base_dir.clone());
-        
+
         // Determine resource_dir: flavor > app > base_dir default
-        let resource_dir = flavor.resource_dir.clone()
+        let resource_dir = flavor
+            .resource_dir
+            .clone()
             .or_else(|| app.resource_dir.clone())
             .or_else(|| base_dir.as_ref().map(|bd| bd.join("res")))
             .expect("resourceDir must be specified or derivable from baseDir");
-        
+
         // Determine manifest_path: flavor > app > base_dir default
-        let manifest_path = flavor.manifest_path.clone()
+        let manifest_path = flavor
+            .manifest_path
+            .clone()
             .or_else(|| app.manifest_path.clone())
             .or_else(|| base_dir.as_ref().map(|bd| bd.join("AndroidManifest.xml")))
             .expect("manifestPath must be specified or derivable from baseDir");
-        
+
         // Determine package_name: flavor > app (required at app level)
-        let package_name = flavor.package_name.clone()
+        let package_name = flavor
+            .package_name
+            .clone()
             .unwrap_or_else(|| format!("{}.{}", app.package_name, flavor.name));
-        
+
         // Determine output_file: flavor > app > common
-        let output_file = flavor.output_file.clone()
+        let output_file = flavor
+            .output_file
+            .clone()
             .or_else(|| app.output_file.clone())
             .or_else(|| common_output_file.clone());
-        
+
         // Determine additional_resource_dirs: flavor overrides app (not merged)
-        let additional_resource_dirs = flavor.additional_resource_dirs.clone()
+        let additional_resource_dirs = flavor
+            .additional_resource_dirs
+            .clone()
             .or_else(|| app.additional_resource_dirs.clone());
-        
+
         BuildConfig {
             resource_dir,
             manifest_path,
-            output_dir: flavor.output_dir.clone()
+            output_dir: flavor
+                .output_dir
+                .clone()
                 .or_else(|| app.output_dir.clone())
-                .unwrap_or_else(|| common_output_dir.clone()),
+                .unwrap_or_else(|| common_output_dir.to_path_buf()),
             output_file,
             package_name,
             aapt2_path: common_aapt2_path.clone(),
-            android_jar: common_android_jar.clone(),
+            android_jar: common_android_jar.to_path_buf(),
             aar_files: common_aar_files.clone(),
             incremental: common_incremental,
             cache_dir: common_cache_dir.clone(),
-            version_code: flavor.version_code
+            version_code: flavor
+                .version_code
                 .or(app.version_code)
                 .or(common_version_code),
-            version_name: flavor.version_name.clone()
+            version_name: flavor
+                .version_name
+                .clone()
                 .or_else(|| app.version_name.clone())
                 .or_else(|| common_version_name.clone()),
             additional_resource_dirs,
             compiled_dir: None,
             stable_ids_file: common_stable_ids_file.clone(),
             parallel_workers: common_parallel_workers,
-            package_id: flavor.package_id.clone()
+            package_id: flavor
+                .package_id
+                .clone()
                 .or_else(|| app.package_id.clone())
                 .or_else(|| common_package_id.clone()),
         }
@@ -488,13 +520,13 @@ impl BuildConfig {
     /// Expand environment variables in path strings
     fn expand_env_vars(path: &str) -> String {
         let mut result = path.to_string();
-        
+
         // Find all ${VAR} patterns and replace them
         while let Some(start) = result.find("${") {
             if let Some(end) = result[start..].find('}') {
                 let end = start + end;
                 let var_name = &result[start + 2..end];
-                
+
                 if let Ok(value) = std::env::var(var_name) {
                     result.replace_range(start..=end, &value);
                 } else {
@@ -505,53 +537,66 @@ impl BuildConfig {
                 break;
             }
         }
-        
+
         result
     }
 
     /// Expand environment variables in all path fields
     pub fn expand_paths(&mut self) {
         // Expand environment variables in paths
-        self.resource_dir = PathBuf::from(Self::expand_env_vars(&self.resource_dir.to_string_lossy()));
-        self.manifest_path = PathBuf::from(Self::expand_env_vars(&self.manifest_path.to_string_lossy()));
+        self.resource_dir =
+            PathBuf::from(Self::expand_env_vars(&self.resource_dir.to_string_lossy()));
+        self.manifest_path =
+            PathBuf::from(Self::expand_env_vars(&self.manifest_path.to_string_lossy()));
         self.output_dir = PathBuf::from(Self::expand_env_vars(&self.output_dir.to_string_lossy()));
-        self.android_jar = PathBuf::from(Self::expand_env_vars(&self.android_jar.to_string_lossy()));
-        
+        self.android_jar =
+            PathBuf::from(Self::expand_env_vars(&self.android_jar.to_string_lossy()));
+
         if let Some(aapt2) = &self.aapt2_path {
-            self.aapt2_path = Some(PathBuf::from(Self::expand_env_vars(&aapt2.to_string_lossy())));
+            self.aapt2_path = Some(PathBuf::from(Self::expand_env_vars(
+                &aapt2.to_string_lossy(),
+            )));
         }
-        
+
         if let Some(cache) = &self.cache_dir {
-            self.cache_dir = Some(PathBuf::from(Self::expand_env_vars(&cache.to_string_lossy())));
+            self.cache_dir = Some(PathBuf::from(Self::expand_env_vars(
+                &cache.to_string_lossy(),
+            )));
         }
-        
+
         if let Some(compiled) = &self.compiled_dir {
-            self.compiled_dir = Some(PathBuf::from(Self::expand_env_vars(&compiled.to_string_lossy())));
+            self.compiled_dir = Some(PathBuf::from(Self::expand_env_vars(
+                &compiled.to_string_lossy(),
+            )));
         }
-        
+
         if let Some(stable) = &self.stable_ids_file {
-            self.stable_ids_file = Some(PathBuf::from(Self::expand_env_vars(&stable.to_string_lossy())));
+            self.stable_ids_file = Some(PathBuf::from(Self::expand_env_vars(
+                &stable.to_string_lossy(),
+            )));
         }
-        
+
         if let Some(aars) = &self.aar_files {
             self.aar_files = Some(
                 aars.iter()
                     .map(|p| PathBuf::from(Self::expand_env_vars(&p.to_string_lossy())))
-                    .collect()
+                    .collect(),
             );
         }
-        
+
         if let Some(additional) = &self.additional_resource_dirs {
             self.additional_resource_dirs = Some(
-                additional.iter()
+                additional
+                    .iter()
                     .map(|p| PathBuf::from(Self::expand_env_vars(&p.to_string_lossy())))
-                    .collect()
+                    .collect(),
             );
         }
     }
 
     /// Load configuration from file or use defaults
     /// Priority: explicit config file > asb.config.json in current dir > built-in defaults
+    #[allow(dead_code)]
     pub fn load_or_default(config_file: Option<PathBuf>) -> anyhow::Result<Self> {
         // If explicit config file is provided, use it
         if let Some(config_path) = config_file {
@@ -594,7 +639,7 @@ impl BuildConfig {
         };
 
         let content = std::fs::read_to_string(&config_path)?;
-        
+
         // Try to parse as multi-app config first (new format)
         if let Ok(multi_config) = serde_json::from_str::<MultiAppConfig>(&content) {
             let mut configs = multi_config.into_build_configs();
@@ -603,7 +648,7 @@ impl BuildConfig {
             }
             return Ok(configs);
         }
-        
+
         // Try to parse as array (previous format)
         if let Ok(mut configs) = serde_json::from_str::<Vec<Self>>(&content) {
             for config in &mut configs {
@@ -611,7 +656,7 @@ impl BuildConfig {
             }
             return Ok(configs);
         }
-        
+
         // Fall back to single object (original format for backward compatibility)
         let mut config: Self = serde_json::from_str(&content)?;
         config.expand_paths();
@@ -693,7 +738,10 @@ mod tests {
         assert_eq!(configs[0].package_name, "com.example.base");
         assert_eq!(configs[1].package_name, "com.example.feature");
         assert!(configs[1].additional_resource_dirs.is_some());
-        assert_eq!(configs[1].additional_resource_dirs.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            configs[1].additional_resource_dirs.as_ref().unwrap().len(),
+            1
+        );
     }
 }
 
@@ -715,6 +763,7 @@ pub struct LinkResult {
 
 /// AAR file information
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AarInfo {
     pub path: PathBuf,
     pub resource_dir: Option<PathBuf>,

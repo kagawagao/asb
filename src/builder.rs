@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 use walkdir::WalkDir;
 
-use crate::aapt2::Aapt2;
+use crate::aapt2::{Aapt2, LinkParams};
 use crate::aar::AarExtractor;
 use crate::cache::BuildCache;
 use crate::types::{BuildConfig, BuildResult, CompileResult};
@@ -11,22 +11,23 @@ use crate::types::{BuildConfig, BuildResult, CompileResult};
 /// Normalize a resource path by removing version qualifiers
 /// e.g., "res/drawable-v21/icon.xml" -> "res/drawable/icon.xml"
 /// e.g., "res/color-v11/primary.xml" -> "res/color/primary.xml"
+#[allow(dead_code)]
 fn normalize_resource_path(path: &str) -> String {
     if !path.starts_with("res/") {
         return path.to_string();
     }
-    
+
     let parts: Vec<&str> = path.split('/').collect();
     if parts.len() < 3 {
         return path.to_string();
     }
-    
+
     // parts[0] = "res"
     // parts[1] = resource type (e.g., "drawable-v21", "mipmap-xxhdpi-v4")
     // parts[2..] = file path
-    
+
     let res_type = parts[1];
-    
+
     // Remove version qualifiers like -v21, -v11, -v4, etc.
     // Also handle complex qualifiers like "mipmap-xxhdpi-v4" -> "mipmap-xxhdpi"
     let normalized_type = if let Some(v_pos) = res_type.rfind("-v") {
@@ -40,7 +41,7 @@ fn normalize_resource_path(path: &str) -> String {
     } else {
         res_type.to_string()
     };
-    
+
     // Reconstruct the path
     format!("res/{}/{}", normalized_type, parts[2..].join("/"))
 }
@@ -116,7 +117,10 @@ impl SkinBuilder {
         }
 
         // Compile resources - compile each directory separately to avoid file name conflicts
-        info!("Compiling resources from {} directories...", resource_dirs.len());
+        info!(
+            "Compiling resources from {} directories...",
+            resource_dirs.len()
+        );
         let mut all_flat_files = Vec::new();
         let mut missing_dirs = Vec::new();
         let mut valid_resource_dirs = Vec::new();
@@ -126,7 +130,7 @@ impl SkinBuilder {
                 // Use a separate compiled subdirectory for each resource directory to avoid flat file conflicts
                 let module_compiled_dir = compiled_dir.join(format!("module_{}", idx));
                 std::fs::create_dir_all(&module_compiled_dir)?;
-                
+
                 let files = self.find_resource_files(res_dir)?;
                 if !files.is_empty() {
                     let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
@@ -143,24 +147,26 @@ impl SkinBuilder {
 
         if flat_files.is_empty() {
             AarExtractor::cleanup_aars(&aar_infos)?;
-            
+
             // Provide helpful error message
             let mut error_msg = String::from("No resources found to compile.\n\n");
-            
+
             if !missing_dirs.is_empty() {
                 error_msg.push_str("The following resource directories do not exist:\n");
                 for dir in &missing_dirs {
                     error_msg.push_str(&format!("  - {}\n", dir));
                 }
-                error_msg.push_str("\n");
+                error_msg.push('\n');
             }
-            
+
             error_msg.push_str("Possible solutions:\n");
             error_msg.push_str("  1. Make sure you're running 'asb build' from your Android project root directory\n");
             error_msg.push_str("  2. Create a config file with: asb init\n");
             error_msg.push_str("  3. Specify custom paths with: asb build --resource-dir <path> --manifest <path> --android-jar <path>\n");
-            error_msg.push_str("  4. Check that your resource directory contains valid Android resources\n");
-            
+            error_msg.push_str(
+                "  4. Check that your resource directory contains valid Android resources\n",
+            );
+
             return Ok(BuildResult {
                 success: false,
                 apk_path: None,
@@ -177,23 +183,25 @@ impl SkinBuilder {
 
         // Link resources into skin package
         info!("Linking resources...");
-        let output_filename = self.config.output_file.as_ref()
-            .map(|f| f.clone())
+        let output_filename = self
+            .config
+            .output_file
+            .clone()
             .unwrap_or_else(|| format!("{}.skin", self.config.package_name));
-        
+
         let output_apk = self.config.output_dir.join(output_filename);
 
-        let link_result = self.aapt2.link(
-            &flat_files,
-            &self.config.manifest_path,
-            &self.config.android_jar,
-            &output_apk,
-            Some(&self.config.package_name),
-            self.config.version_code,
-            self.config.version_name.as_deref(),
-            self.config.stable_ids_file.as_deref(),
-            self.config.package_id.as_deref(),
-        )?;
+        let link_result = self.aapt2.link(LinkParams {
+            flat_files: &flat_files,
+            manifest_path: &self.config.manifest_path,
+            android_jar: &self.config.android_jar,
+            output_apk: &output_apk,
+            package_name: Some(&self.config.package_name),
+            version_code: self.config.version_code,
+            version_name: self.config.version_name.as_deref(),
+            stable_ids_file: self.config.stable_ids_file.as_deref(),
+            package_id: self.config.package_id.as_deref(),
+        })?;
 
         // Cleanup AAR extraction directories
         if !aar_infos.is_empty() {
@@ -247,17 +255,17 @@ impl SkinBuilder {
         // BUT skip res/ entries - we'll add raw XML files instead
         let apk_file = File::open(apk_path)?;
         let mut zip_archive = ZipArchive::new(apk_file)?;
-        
+
         for i in 0..zip_archive.len() {
             let mut file = zip_archive.by_index(i)?;
             let name = file.name().to_string();
-            
+
             // Skip res/ entries - we'll add the raw XML files from source directories
             // This prevents including version-qualified directories like res/layout-v21/
             if name.starts_with("res/") && name != "res/" {
                 continue;
             }
-            
+
             added_files.insert(name.clone());
 
             zip_writer.start_file(&name, options)?;
@@ -279,7 +287,7 @@ impl SkinBuilder {
                 .filter(|e| e.file_type().is_file())
             {
                 let file_path = entry.path();
-                
+
                 // Skip hidden files
                 if file_path
                     .file_name()
@@ -292,13 +300,14 @@ impl SkinBuilder {
 
                 // Get relative path from res directory
                 if let Ok(rel_path) = file_path.strip_prefix(res_dir) {
-                    let zip_path = format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
+                    let zip_path =
+                        format!("res/{}", rel_path.display().to_string().replace('\\', "/"));
 
                     // Skip if already added (handles duplicate files across directories)
                     if added_files.contains(&zip_path) {
                         continue;
                     }
-                    
+
                     added_files.insert(zip_path.clone());
 
                     // Read file content
@@ -322,7 +331,11 @@ impl SkinBuilder {
     }
 
     /// Compile all resource files from multiple directories
-    fn compile_all_resources(&mut self, resource_files: &[PathBuf], compiled_dir: &Path) -> Result<Vec<PathBuf>> {
+    fn compile_all_resources(
+        &mut self,
+        resource_files: &[PathBuf],
+        compiled_dir: &Path,
+    ) -> Result<Vec<PathBuf>> {
         // If incremental build is disabled or no cache, compile all files together
         if self.cache.is_none() {
             // Clear compiled directory to avoid stale flat files
@@ -330,9 +343,11 @@ impl SkinBuilder {
                 std::fs::remove_dir_all(compiled_dir)?;
             }
             std::fs::create_dir_all(compiled_dir)?;
-            
+
             // Compile all files in parallel
-            let result = self.aapt2.compile_files_parallel(resource_files, compiled_dir)?;
+            let result = self
+                .aapt2
+                .compile_files_parallel(resource_files, compiled_dir)?;
             if !result.success {
                 anyhow::bail!("Compilation failed: {:?}", result.errors);
             }
@@ -386,7 +401,10 @@ impl SkinBuilder {
         };
 
         if !flat_files_results.success {
-            anyhow::bail!("Parallel compilation failed: {:?}", flat_files_results.errors);
+            anyhow::bail!(
+                "Parallel compilation failed: {:?}",
+                flat_files_results.errors
+            );
         }
 
         let mut flat_files = Vec::new();
@@ -418,7 +436,12 @@ impl SkinBuilder {
     }
 
     /// Compile a resource directory
-    fn compile_resource_dir(&mut self, res_dir: &Path, compiled_dir: &Path) -> Result<Vec<PathBuf>> {
+    #[allow(dead_code)]
+    fn compile_resource_dir(
+        &mut self,
+        res_dir: &Path,
+        compiled_dir: &Path,
+    ) -> Result<Vec<PathBuf>> {
         // If incremental build is disabled or no cache, compile the whole directory
         if self.cache.is_none() {
             // Clear compiled directory to avoid stale flat files
@@ -426,7 +449,7 @@ impl SkinBuilder {
                 std::fs::remove_dir_all(compiled_dir)?;
             }
             std::fs::create_dir_all(compiled_dir)?;
-            
+
             let result = self.aapt2.compile_dir(res_dir, compiled_dir)?;
             if !result.success {
                 anyhow::bail!("Compilation failed: {:?}", result.errors);
@@ -482,7 +505,10 @@ impl SkinBuilder {
         };
 
         if !flat_files_results.success {
-            anyhow::bail!("Parallel compilation failed: {:?}", flat_files_results.errors);
+            anyhow::bail!(
+                "Parallel compilation failed: {:?}",
+                flat_files_results.errors
+            );
         }
 
         let mut flat_files = Vec::new();
@@ -534,6 +560,7 @@ impl SkinBuilder {
     }
 
     /// Clean build artifacts
+    #[allow(dead_code)]
     pub fn clean(&self) -> Result<()> {
         let compiled_dir = self
             .config

@@ -9,6 +9,19 @@ use crate::types::{CompileResult, LinkResult};
 /// This is used for dynamic resource loading via new Resources()
 pub const DEFAULT_PACKAGE_ID: &str = "0x7f";
 
+/// Parameters for linking resources
+pub struct LinkParams<'a> {
+    pub flat_files: &'a [PathBuf],
+    pub manifest_path: &'a Path,
+    pub android_jar: &'a Path,
+    pub output_apk: &'a Path,
+    pub package_name: Option<&'a str>,
+    pub version_code: Option<u32>,
+    pub version_name: Option<&'a str>,
+    pub stable_ids_file: Option<&'a Path>,
+    pub package_id: Option<&'a str>,
+}
+
 /// Utility for interacting with aapt2
 pub struct Aapt2 {
     aapt2_path: PathBuf,
@@ -53,7 +66,7 @@ impl Aapt2 {
                         .filter_map(|e| e.ok())
                         .filter(|e| e.path().is_dir())
                         .collect();
-                    versions.sort_by(|a, b| b.path().cmp(&a.path()));
+                    versions.sort_by_key(|e| std::cmp::Reverse(e.path()));
 
                     for entry in versions {
                         let aapt2_name = if cfg!(windows) { "aapt2.exe" } else { "aapt2" };
@@ -156,13 +169,16 @@ impl Aapt2 {
                             // Try different naming patterns based on resource type
                             let possible_names = if parent_name.starts_with("values") {
                                 // For values resources: values_strings.arsc.flat
-                                vec![format!("{}_{}.arsc.flat", parent_name,
-                                    file.file_stem().and_then(|s| s.to_str()).unwrap_or(""))]
+                                vec![format!(
+                                    "{}_{}.arsc.flat",
+                                    parent_name,
+                                    file.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+                                )]
                             } else {
                                 // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
                                 vec![format!("{}_{}.flat", parent_name, file_name)]
                             };
-                            
+
                             for flat_name in possible_names {
                                 let flat_path = output_dir.join(&flat_name);
                                 if flat_path.exists() {
@@ -172,7 +188,7 @@ impl Aapt2 {
                         }
                     }
                 }
-                
+
                 anyhow::bail!("Could not find compiled flat file for {}", file.display())
             })
             .collect();
@@ -195,10 +211,11 @@ impl Aapt2 {
     }
 
     /// Compile a single resource file
+    #[allow(dead_code)]
     fn compile_single_file(&self, resource_file: &Path, output_dir: &Path) -> Result<PathBuf> {
         // Get existing flat files before compilation
         let before_files = Self::collect_flat_files(output_dir)?;
-        
+
         let output = Command::new(&self.aapt2_path)
             .arg("compile")
             .arg("-o")
@@ -214,17 +231,17 @@ impl Aapt2 {
 
         // Get flat files after compilation - the new one is our result
         let after_files = Self::collect_flat_files(output_dir)?;
-        
+
         // Find the newly created flat file
         for file in &after_files {
             if !before_files.contains(file) {
                 return Ok(file.clone());
             }
         }
-        
+
         // If we didn't find a new file, it might have been overwritten
         // In that case, try to guess the name based on the resource file path
-        // aapt2 creates names like: 
+        // aapt2 creates names like:
         //   - values_strings.arsc.flat for res/values/strings.xml
         //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
         if let Some(parent) = resource_file.parent() {
@@ -233,13 +250,19 @@ impl Aapt2 {
                     // Try different naming patterns based on resource type
                     let possible_names = if parent_name.starts_with("values") {
                         // For values resources: values_strings.arsc.flat
-                        vec![format!("{}_{}.arsc.flat", parent_name, 
-                            resource_file.file_stem().and_then(|s| s.to_str()).unwrap_or(""))]
+                        vec![format!(
+                            "{}_{}.arsc.flat",
+                            parent_name,
+                            resource_file
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("")
+                        )]
                     } else {
                         // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
                         vec![format!("{}_{}.flat", parent_name, file_name)]
                     };
-                    
+
                     for flat_name in possible_names {
                         let flat_path = output_dir.join(&flat_name);
                         if flat_path.exists() {
@@ -249,33 +272,25 @@ impl Aapt2 {
                 }
             }
         }
-        
-        anyhow::bail!("Could not find compiled flat file for {}", resource_file.display())
+
+        anyhow::bail!(
+            "Could not find compiled flat file for {}",
+            resource_file.display()
+        )
     }
 
     /// Link compiled resources into an APK
-    pub fn link(
-        &self,
-        flat_files: &[PathBuf],
-        manifest_path: &Path,
-        android_jar: &Path,
-        output_apk: &Path,
-        package_name: Option<&str>,
-        version_code: Option<u32>,
-        version_name: Option<&str>,
-        stable_ids_file: Option<&Path>,
-        package_id: Option<&str>,
-    ) -> Result<LinkResult> {
-        debug!("Linking {} flat files", flat_files.len());
+    pub fn link(&self, params: LinkParams) -> Result<LinkResult> {
+        debug!("Linking {} flat files", params.flat_files.len());
 
         let mut cmd = Command::new(&self.aapt2_path);
         cmd.arg("link")
             .arg("--manifest")
-            .arg(manifest_path)
+            .arg(params.manifest_path)
             .arg("-I")
-            .arg(android_jar)
+            .arg(params.android_jar)
             .arg("-o")
-            .arg(output_apk)
+            .arg(params.output_apk)
             .arg("--auto-add-overlay")
             .arg("--no-version-vectors")
             // Keep resource files in the APK (not just resources.arsc)
@@ -284,19 +299,19 @@ impl Aapt2 {
             .arg("--allow-reserved-package-id")
             .arg("--no-resource-removal");
 
-        if let Some(pkg) = package_name {
+        if let Some(pkg) = params.package_name {
             cmd.arg("--rename-manifest-package").arg(pkg);
         }
 
-        if let Some(code) = version_code {
+        if let Some(code) = params.version_code {
             cmd.arg("--version-code").arg(code.to_string());
         }
 
-        if let Some(name) = version_name {
+        if let Some(name) = params.version_name {
             cmd.arg("--version-name").arg(name);
         }
 
-        if let Some(stable_ids) = stable_ids_file {
+        if let Some(stable_ids) = params.stable_ids_file {
             cmd.arg("--stable-ids").arg(stable_ids);
             cmd.arg("--emit-ids").arg(stable_ids);
         }
@@ -304,11 +319,11 @@ impl Aapt2 {
         // Set package ID for resource IDs
         // This is critical for dynamic resource loading via new Resources()
         // Default to standard app package ID if not specified
-        let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
+        let pkg_id = params.package_id.unwrap_or(DEFAULT_PACKAGE_ID);
         cmd.arg("--package-id").arg(pkg_id);
 
         // Add all flat files
-        for flat_file in flat_files {
+        for flat_file in params.flat_files {
             cmd.arg(flat_file);
         }
 
@@ -326,7 +341,7 @@ impl Aapt2 {
 
         Ok(LinkResult {
             success: true,
-            apk_path: Some(output_apk.to_path_buf()),
+            apk_path: Some(params.output_apk.to_path_buf()),
             errors: vec![],
         })
     }
