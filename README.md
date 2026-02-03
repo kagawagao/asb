@@ -3,6 +3,7 @@
 一个基于 aapt2 的高性能 Android 应用皮肤包打包工具 / A high-performance aapt2-based Android skin package builder
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/kagawagao/asb/workflows/CI/badge.svg)](https://github.com/kagawagao/asb/actions/workflows/ci.yml)
 
 ## Features / 特性
 
