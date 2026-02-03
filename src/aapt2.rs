@@ -265,6 +265,7 @@ impl Aapt2 {
         version_name: Option<&str>,
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
     ) -> Result<LinkResult> {
         debug!("Linking {} flat files", flat_files.len());
 
@@ -294,6 +295,10 @@ impl Aapt2 {
 
         if let Some(name) = version_name {
             cmd.arg("--version-name").arg(name);
+        }
+
+        if let Some(min_sdk) = min_sdk_version {
+            cmd.arg("--min-sdk-version").arg(min_sdk.to_string());
         }
 
         if let Some(stable_ids) = stable_ids_file {

@@ -463,6 +463,86 @@ impl Cli {
         let content = serde_json::to_string_pretty(&sample_config)?;
         std::fs::write(&config_path, content)?;
 
+        // Create template AndroidManifest.xml if it doesn't exist
+        let manifest_path = dir.join("src/main/AndroidManifest.xml");
+        if !manifest_path.exists() {
+            std::fs::create_dir_all(
+                manifest_path.parent()
+                    .expect("manifest path must have parent directory")
+            )?;
+            // Note: uses-sdk is deprecated in modern Gradle-based Android development, 
+            // but is appropriate here as ASB builds APKs directly with aapt2, not Gradle
+            let manifest_content = r#"<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.skin">
+    
+    <uses-sdk android:minSdkVersion="26" />
+    
+    <application
+        android:label="@string/app_name">
+    </application>
+    
+</manifest>
+"#;
+            std::fs::write(&manifest_path, manifest_content)?;
+            println!(
+                "{}",
+                format!("✓ Template manifest created: {}", manifest_path.display()).green()
+            );
+        }
+
+        // Create template resource directory structure
+        let res_dir = dir.join("src/main/res");
+        
+        // Create values directory with sample colors and strings
+        let values_dir = res_dir.join("values");
+        if !values_dir.exists() {
+            std::fs::create_dir_all(&values_dir)?;
+            
+            // Create colors.xml
+            let colors_content = r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#6200EE</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorAccent">#03DAC5</color>
+</resources>
+"#;
+            std::fs::write(values_dir.join("colors.xml"), colors_content)?;
+            println!(
+                "{}",
+                format!("✓ Template colors created: {}", values_dir.join("colors.xml").display()).green()
+            );
+            
+            // Create strings.xml
+            let strings_content = r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skin Package</string>
+</resources>
+"#;
+            std::fs::write(values_dir.join("strings.xml"), strings_content)?;
+            println!(
+                "{}",
+                format!("✓ Template strings created: {}", values_dir.join("strings.xml").display()).green()
+            );
+        }
+
+        // Create mipmap-anydpi-v26 directory for adaptive icon (with proper version qualifier)
+        let mipmap_dir = res_dir.join("mipmap-anydpi-v26");
+        if !mipmap_dir.exists() {
+            std::fs::create_dir_all(&mipmap_dir)?;
+            let ic_launcher_content = r#"<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/colorPrimary"/>
+    <foreground android:drawable="@color/colorAccent"/>
+</adaptive-icon>
+"#;
+            std::fs::write(mipmap_dir.join("ic_launcher.xml"), ic_launcher_content)?;
+            println!(
+                "{}",
+                format!("✓ Template launcher icon created: {}", mipmap_dir.join("ic_launcher.xml").display()).green()
+            );
+        }
+
         println!(
             "{}",
             format!("✓ Configuration file created: {}", config_path.display()).green()
