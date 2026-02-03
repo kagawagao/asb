@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主题色 -->
+    <color name="primary_color">#FF6200EE</color>
+    <color name="primary_dark_color">#FF3700B3</color>
+    <color name="accent_color">#FF03DAC5</color>
+    
+    <!-- 背景色 -->
+    <color name="background_color">#FFFFFFFF</color>
+    <color name="surface_color">#FFF5F5F5</color>
+    
+    <!-- 文本色 -->
+    <color name="text_primary">#FF000000</color>
+    <color name="text_secondary">#FF666666</color>
+    
+    <!-- 按钮颜色 -->
+    <color name="button_normal">#FF6200EE</color>
+    <color name="button_pressed">#FF3700B3</color>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skin Loader Test</string>
+    <string name="load_skin">Load Skin</string>
+    <string name="reset_skin">Reset to Default</string>
+    <string name="status_default">Default theme active</string>
+    <string name="status_loading">Loading skin...</string>
+    <string name="status_success">Skin loaded successfully!</string>
+    <string name="status_error">Error loading skin</string>
+    <string name="skin_path_label">Skin Path:</string>
+    <string name="resource_id_label">Resource ID Test:</string>
+    <string name="color_preview">Color Preview</string>
+</resources>

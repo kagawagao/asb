@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name_skin">Skin Theme</string>
+    <string name="welcome_message">Welcome to Skin Loader</string>
+    <string name="skin_loaded">Skin successfully loaded!</string>
+    <string name="theme_description">This is a custom theme from skin package</string>
+</resources>

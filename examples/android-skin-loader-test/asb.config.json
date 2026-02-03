@@ -1,0 +1,11 @@
+{
+  "resourceDir": "./skin/res",
+  "manifestPath": "./skin/AndroidManifest.xml",
+  "outputDir": "./build/skin",
+  "packageName": "com.example.skin",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "packageId": "0x7f",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0"
+}
