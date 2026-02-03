@@ -286,6 +286,34 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
 mod tests {
     use super::*;
 
+    // Helper function to create a test config with minimal required fields
+    fn test_config(
+        resource_dir: &str,
+        package_name: &str,
+        additional_resource_dirs: Option<Vec<PathBuf>>,
+    ) -> BuildConfig {
+        BuildConfig {
+            resource_dir: PathBuf::from(resource_dir),
+            manifest_path: PathBuf::from("./AndroidManifest.xml"),
+            output_file: None,
+            output_dir: PathBuf::from("./build"),
+            package_name: package_name.to_string(),
+            android_jar: PathBuf::from("android.jar"),
+            aar_files: None,
+            aapt2_path: None,
+            incremental: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs,
+            compiled_dir: None,
+            stable_ids_file: None,
+            parallel_workers: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        }
+    }
+
     #[test]
     fn test_single_config() {
         let configs = vec![BuildConfig::default_config()];
@@ -296,45 +324,8 @@ mod tests {
 
     #[test]
     fn test_independent_configs() {
-        let config1 = BuildConfig {
-            resource_dir: PathBuf::from("./res1"),
-            manifest_path: PathBuf::from("./AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build1"),
-            package_name: "com.example.app1".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
-        
-        let config2 = BuildConfig {
-            resource_dir: PathBuf::from("./res2"),
-            manifest_path: PathBuf::from("./AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build2"),
-            package_name: "com.example.app2".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let config1 = test_config("./res1", "com.example.app1", None);
+        let config2 = test_config("./res2", "com.example.app2", None);
         
         let configs = vec![config1, config2];
         let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
@@ -347,46 +338,14 @@ mod tests {
     #[test]
     fn test_dependent_configs() {
         // Base config
-        let base_config = BuildConfig {
-            resource_dir: PathBuf::from("./base/res"),
-            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.base".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let base_config = test_config("./base/res", "com.example.base", None);
 
         // Feature config that depends on base
-        let feature_config = BuildConfig {
-            resource_dir: PathBuf::from("./feature/res"),
-            manifest_path: PathBuf::from("./feature/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.feature".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let feature_config = test_config(
+            "./feature/res",
+            "com.example.feature",
+            Some(vec![PathBuf::from("./base/res")]),
+        );
 
         let configs = vec![base_config, feature_config];
         let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
@@ -406,67 +365,21 @@ mod tests {
     #[test]
     fn test_multiple_features_depending_on_base() {
         // Base config
-        let base_config = BuildConfig {
-            resource_dir: PathBuf::from("./base/res"),
-            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.base".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let base_config = test_config("./base/res", "com.example.base", None);
 
         // Feature1 depends on base
-        let feature1_config = BuildConfig {
-            resource_dir: PathBuf::from("./feature1/res"),
-            manifest_path: PathBuf::from("./feature1/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.feature1".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let feature1_config = test_config(
+            "./feature1/res",
+            "com.example.feature1",
+            Some(vec![PathBuf::from("./base/res")]),
+        );
 
         // Feature2 also depends on base
-        let feature2_config = BuildConfig {
-            resource_dir: PathBuf::from("./feature2/res"),
-            manifest_path: PathBuf::from("./feature2/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.feature2".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let feature2_config = test_config(
+            "./feature2/res",
+            "com.example.feature2",
+            Some(vec![PathBuf::from("./base/res")]),
+        );
 
         let configs = vec![base_config, feature1_config, feature2_config];
         let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
@@ -484,67 +397,17 @@ mod tests {
     #[test]
     fn test_mixed_independent_and_dependent_configs() {
         // Independent config
-        let independent_config = BuildConfig {
-            resource_dir: PathBuf::from("./independent/res"),
-            manifest_path: PathBuf::from("./independent/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.independent".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let independent_config = test_config("./independent/res", "com.example.independent", None);
 
         // Base config
-        let base_config = BuildConfig {
-            resource_dir: PathBuf::from("./base/res"),
-            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.base".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let base_config = test_config("./base/res", "com.example.base", None);
 
         // Feature depends on base
-        let feature_config = BuildConfig {
-            resource_dir: PathBuf::from("./feature/res"),
-            manifest_path: PathBuf::from("./feature/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.feature".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let feature_config = test_config(
+            "./feature/res",
+            "com.example.feature",
+            Some(vec![PathBuf::from("./base/res")]),
+        );
 
         let configs = vec![independent_config, base_config, feature_config];
         let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
@@ -570,67 +433,21 @@ mod tests {
     #[test]
     fn test_extract_common_dependencies_single_shared() {
         // Base config
-        let base_config = BuildConfig {
-            resource_dir: PathBuf::from("./base/res"),
-            manifest_path: PathBuf::from("./base/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.base".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let base_config = test_config("./base/res", "com.example.base", None);
 
         // Feature1 depends on base
-        let feature1_config = BuildConfig {
-            resource_dir: PathBuf::from("./feature1/res"),
-            manifest_path: PathBuf::from("./feature1/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.feature1".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let feature1_config = test_config(
+            "./feature1/res",
+            "com.example.feature1",
+            Some(vec![PathBuf::from("./base/res")]),
+        );
 
         // Feature2 also depends on base
-        let feature2_config = BuildConfig {
-            resource_dir: PathBuf::from("./feature2/res"),
-            manifest_path: PathBuf::from("./feature2/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.feature2".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![PathBuf::from("./base/res")]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let feature2_config = test_config(
+            "./feature2/res",
+            "com.example.feature2",
+            Some(vec![PathBuf::from("./base/res")]),
+        );
 
         let configs = vec![base_config, feature1_config, feature2_config];
         let common_deps = extract_common_dependencies(&configs);
@@ -646,94 +463,30 @@ mod tests {
     #[test]
     fn test_extract_common_dependencies_multiple_shared() {
         // Core config
-        let core_config = BuildConfig {
-            resource_dir: PathBuf::from("./core/res"),
-            manifest_path: PathBuf::from("./core/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.core".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let core_config = test_config("./core/res", "com.example.core", None);
 
         // Shared config
-        let shared_config = BuildConfig {
-            resource_dir: PathBuf::from("./shared/res"),
-            manifest_path: PathBuf::from("./shared/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.shared".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: None,
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        let shared_config = test_config("./shared/res", "com.example.shared", None);
 
         // App1 depends on both core and shared
-        let app1_config = BuildConfig {
-            resource_dir: PathBuf::from("./app1/res"),
-            manifest_path: PathBuf::from("./app1/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.app1".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![
+        let app1_config = test_config(
+            "./app1/res",
+            "com.example.app1",
+            Some(vec![
                 PathBuf::from("./core/res"),
                 PathBuf::from("./shared/res"),
             ]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        );
 
         // App2 depends on both core and shared
-        let app2_config = BuildConfig {
-            resource_dir: PathBuf::from("./app2/res"),
-            manifest_path: PathBuf::from("./app2/AndroidManifest.xml"),
-            output_file: None,
-            output_dir: PathBuf::from("./build"),
-            package_name: "com.example.app2".to_string(),
-            android_jar: PathBuf::from("android.jar"),
-            aar_files: None,
-            aapt2_path: None,
-            incremental: None,
-            cache_dir: None,
-            version_code: None,
-            version_name: None,
-            additional_resource_dirs: Some(vec![
+        let app2_config = test_config(
+            "./app2/res",
+            "com.example.app2",
+            Some(vec![
                 PathBuf::from("./core/res"),
                 PathBuf::from("./shared/res"),
             ]),
-            compiled_dir: None,
-            stable_ids_file: None,
-            parallel_workers: None,
-            package_id: None,
-        };
+        );
 
         let configs = vec![core_config, shared_config, app1_config, app2_config];
         let common_deps = extract_common_dependencies(&configs);

@@ -293,6 +293,7 @@ impl MultiAppConfig {
             stable_ids_file: common_stable_ids_file.clone(),
             parallel_workers: common_parallel_workers,
             package_id: app.package_id.clone().or_else(|| common_package_id.clone()),
+            precompiled_dependencies: None,
         }
     }
 
@@ -371,6 +372,7 @@ impl MultiAppConfig {
             package_id: flavor.package_id.clone()
                 .or_else(|| app.package_id.clone())
                 .or_else(|| common_package_id.clone()),
+            precompiled_dependencies: None,
         }
     }
 }
@@ -452,6 +454,11 @@ pub struct BuildConfig {
     /// If not specified, defaults to "0x7f"
     #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
     pub package_id: Option<String>,
+
+    /// Pre-compiled common dependencies (runtime only, not serialized)
+    /// Map from resource directory path to compiled flat files
+    #[serde(skip, default)]
+    pub precompiled_dependencies: Option<std::collections::HashMap<PathBuf, Vec<PathBuf>>>,
 }
 
 impl BuildConfig {
@@ -482,6 +489,7 @@ impl BuildConfig {
             stable_ids_file: None,
             parallel_workers: None,
             package_id: Some(DEFAULT_PACKAGE_ID.to_string()),
+            precompiled_dependencies: None,
         }
     }
 
