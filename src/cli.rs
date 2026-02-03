@@ -466,7 +466,9 @@ impl Cli {
         // Create template AndroidManifest.xml if it doesn't exist
         let manifest_path = dir.join("src/main/AndroidManifest.xml");
         if !manifest_path.exists() {
+            // Safe to unwrap: join() always creates a path with a parent
             std::fs::create_dir_all(manifest_path.parent().unwrap())?;
+            // Note: uses-sdk is appropriate here as ASB builds APKs directly with aapt2, not Gradle
             let manifest_content = r#"<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.skin">
@@ -474,7 +476,7 @@ impl Cli {
     <uses-sdk android:minSdkVersion="26" />
     
     <application
-        android:label="Skin Package">
+        android:label="@string/app_name">
     </application>
     
 </manifest>
@@ -489,10 +491,12 @@ impl Cli {
         // Create template resource directory structure
         let res_dir = dir.join("src/main/res");
         
-        // Create values directory with sample colors
+        // Create values directory with sample colors and strings
         let values_dir = res_dir.join("values");
         if !values_dir.exists() {
             std::fs::create_dir_all(&values_dir)?;
+            
+            // Create colors.xml
             let colors_content = r#"<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="colorPrimary">#6200EE</color>
@@ -504,6 +508,18 @@ impl Cli {
             println!(
                 "{}",
                 format!("✓ Template colors created: {}", values_dir.join("colors.xml").display()).green()
+            );
+            
+            // Create strings.xml
+            let strings_content = r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skin Package</string>
+</resources>
+"#;
+            std::fs::write(values_dir.join("strings.xml"), strings_content)?;
+            println!(
+                "{}",
+                format!("✓ Template strings created: {}", values_dir.join("strings.xml").display()).green()
             );
         }
 
