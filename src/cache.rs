@@ -127,6 +127,7 @@ impl BuildCache {
     }
 
     /// Clear cache
+    #[allow(dead_code)]
     pub fn clear(&mut self) -> Result<()> {
         self.cache.entries.clear();
         if self.cache_file.exists() {
@@ -136,6 +137,7 @@ impl BuildCache {
     }
 
     /// Get all cached flat files
+    #[allow(dead_code)]
     pub fn get_all_cached_flat_files(&self) -> Vec<PathBuf> {
         self.cache
             .entries
@@ -261,6 +263,7 @@ impl CommonDependencyCache {
     }
 
     /// Get cached flat files for a common dependency
+    #[allow(dead_code)]
     pub fn get_cached_flat_files(&self, resource_dir: &Path) -> Option<Vec<PathBuf>> {
         self.cache
             .entries
@@ -298,6 +301,7 @@ impl CommonDependencyCache {
     }
 
     /// Clear cache
+    #[allow(dead_code)]
     pub fn clear(&mut self) -> Result<()> {
         self.cache.entries.clear();
         if self.cache_file.exists() {

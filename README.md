@@ -55,6 +55,7 @@ asb build
 ```
 
 默认配置使用以下标准路径：
+
 - 资源目录: `./src/main/res`
 - Manifest: `./src/main/AndroidManifest.xml`
 - 输出目录: `./build/outputs/skin`
@@ -171,6 +172,7 @@ project/
 构建皮肤包
 
 **Options:**
+
 - `-c, --config <path>` - 配置文件路径（可选，默认查找 ./asb.config.json）
 - `-r, --resource-dir <path>` - 资源目录路径（覆盖配置文件）
 - `-m, --manifest <path>` - AndroidManifest.xml 路径（覆盖配置文件）
@@ -187,6 +189,7 @@ project/
 - `--package-id <id>` - 资源包 ID（如 "0x7f"），用于动态资源加载
 
 **说明:**
+
 - 所有参数都是可选的
 - 如果不提供 `--config`，工具会自动查找当前目录的 `./asb.config.json`
 - 如果没有找到配置文件，会使用内置的默认配置（基于标准 Android 项目结构）
@@ -268,54 +271,55 @@ asb init --dir ./my-skin-project
   "outputDir": "./build",
   "packageName": "com.example.skin",
   "androidJar": "/path/to/android.jar",
-  "aarFiles": [
-    "./libs/library1.aar",
-    "./libs/library2.aar"
-  ],
+  "aarFiles": ["./libs/library1.aar", "./libs/library2.aar"],
   "aapt2Path": "/path/to/aapt2",
   "incremental": true,
   "cacheDir": "./build/.cache",
   "versionCode": 1,
   "versionName": "1.0.0",
-  "additionalResourceDirs": [
-    "./extra-res"
-  ],
+  "additionalResourceDirs": ["./extra-res"],
   "compiledDir": "./build/compiled",
   "stableIdsFile": "./stable-ids.txt",
-  "parallelWorkers": 8,
   "packageId": "0x7f"
 }
 ```
 
 ### Configuration Options / 配置选项
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `resourceDir` | string | Yes | 资源目录路径 |
-| `manifestPath` | string | Yes | AndroidManifest.xml 路径 |
-| `outputDir` | string | Yes | 输出目录 |
-| `packageName` | string | Yes | 包名 |
-| `androidJar` | string | Yes | android.jar 路径 |
-| `aarFiles` | string[] | No | AAR 文件列表 |
-| `aapt2Path` | string | No | aapt2 路径（自动检测） |
-| `incremental` | boolean | No | 启用增量构建（默认 false） |
-| `cacheDir` | string | No | 缓存目录（默认 outputDir/.build-cache） |
-| `versionCode` | number | No | 版本号 |
-| `versionName` | string | No | 版本名称 |
-| `additionalResourceDirs` | string[] | No | 额外的资源目录 |
-| `compiledDir` | string | No | 编译产物目录（默认 outputDir/compiled） |
-| `stableIdsFile` | string | No | stable IDs 文件路径，用于保持资源 ID 稳定 |
-| `parallelWorkers` | number | No | 并行工作线程数（默认为 CPU 核心数） |
-| `packageId` | string | No | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"） |
+| Option                   | Type     | Required | Description                                             |
+| ------------------------ | -------- | -------- | ------------------------------------------------------- |
+| `resourceDir`            | string   | Yes      | 资源目录路径                                            |
+| `manifestPath`           | string   | Yes      | AndroidManifest.xml 路径                                |
+| `outputDir`              | string   | Yes      | 输出目录                                                |
+| `packageName`            | string   | Yes      | 包名                                                    |
+| `androidJar`             | string   | Yes      | android.jar 路径                                        |
+| `aarFiles`               | string[] | No       | AAR 文件列表                                            |
+| `aapt2Path`              | string   | No       | aapt2 路径（自动检测）                                  |
+| `incremental`            | boolean  | No       | 启用增量构建（默认 false）                              |
+| `cacheDir`               | string   | No       | 缓存目录（默认 outputDir/.build-cache）                 |
+| `versionCode`            | number   | No       | 版本号                                                  |
+| `versionName`            | string   | No       | 版本名称                                                |
+| `additionalResourceDirs` | string[] | No       | 额外的资源目录                                          |
+| `compiledDir`            | string   | No       | 编译产物目录（默认 outputDir/compiled）                 |
+| `stableIdsFile`          | string   | No       | stable IDs 文件路径，用于保持资源 ID 稳定               |
+| `packageId`              | string   | No       | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"） |
+
+#### 多应用配置
+
+对于多应用配置（MultiAppConfig），支持以下额外字段：
+
+| Option              | Type   | Required | Description                         |
+| ------------------- | ------ | -------- | ----------------------------------- |
+| `maxParallelBuilds` | number | No       | 最大并行构建数（默认为 CPU 核心数） |
 
 ## Performance / 性能特性
 
 ### 并发编译
 
-ASB 使用 Rust 的 Rayon 库实现并行资源编译：
+ASB 实现了两层并发优化：
 
-- 默认使用所有可用 CPU 核心
-- 可通过 `--workers` 参数或配置文件中的 `parallelWorkers` 自定义线程数
+- **资源编译并发**：自动设置为 CPU 核心数的 2 倍，充分利用系统资源
+- **多配置构建并发**：可通过 `--max-parallel-builds` 参数或配置文件中的 `maxParallelBuilds` 自定义最大并行数（默认为 CPU 核心数）
 - 对于大型项目，并发编译可显著缩短构建时间
 
 ### 增量构建
@@ -335,6 +339,7 @@ ASB 使用 Rust 的 Rayon 库实现并行资源编译：
 **重要提示：** 从版本 2.0.0 起，ASB 支持配置 Package ID 来解决动态资源加载问题。
 
 Android 资源 ID 格式为 `0xPPTTEEEE`，其中：
+
 - `PP` = Package ID（包标识）
 - `TT` = Type ID（类型标识，如 color、string）
 - `EEEE` = Entry ID（条目标识）
@@ -344,12 +349,14 @@ Android 资源 ID 格式为 `0xPPTTEEEE`，其中：
 当通过 Android 的 `new Resources()` API 动态加载皮肤包时，必须正确设置 Package ID，否则会导致所有资源 ID 无效（invalid resourceId）。
 
 **默认值：**
+
 - ASB 默认使用 `0x7f` 作为 Package ID（标准 Android 应用的 Package ID）
 - 这确保皮肤包可以通过 `new Resources()` 正常加载
 
 **自定义 Package ID：**
 
 通过配置文件：
+
 ```json
 {
   "packageId": "0x7f",
@@ -358,11 +365,13 @@ Android 资源 ID 格式为 `0xPPTTEEEE`，其中：
 ```
 
 或通过命令行参数：
+
 ```bash
 asb build --package-id 0x7f
 ```
 
 **使用场景：**
+
 - `0x7f`: 标准应用包（推荐用于动态加载）
 - `0x7e`: 某些特殊插件化场景
 - 其他值：根据具体插件化框架要求
@@ -378,6 +387,7 @@ asb build --package-id 0x7f
 3. **额外资源目录** (`additionalResourceDirs`) - 最高优先级（Product Flavor / Build Type）
 
 **符合 Android Gradle 构建标准：**
+
 ```
 Library Dependencies < Main Source Set < Product Flavor < Build Type
 ```
@@ -385,6 +395,7 @@ Library Dependencies < Main Source Set < Product Flavor < Build Type
 **工作原理：**
 
 ASB 使用 aapt2 的 `-R` 标志实现资源覆盖语义：
+
 - AAR 依赖资源（如果存在）作为基础资源，否则主资源目录作为基础
 - 其他资源作为覆盖层（overlay）链接
 - 当存在同名资源时，优先级高的资源会覆盖优先级低的资源
@@ -395,14 +406,12 @@ ASB 使用 aapt2 的 `-R` 标志实现资源覆盖语义：
 {
   "resourceDir": "./src/main/res",
   "aarFiles": ["./libs/theme-lib.aar"],
-  "additionalResourceDirs": [
-    "./src/free/res",
-    "./src/debug/res"
-  ]
+  "additionalResourceDirs": ["./src/free/res", "./src/debug/res"]
 }
 ```
 
 如果四个来源都定义了 `primary_color`：
+
 - `theme-lib.aar`: `primary_color = #FF0000`（最低优先级 - Library）
 - `src/main/res`: `primary_color = #00FF00`（Main）
 - `src/free/res`: `primary_color = #0000FF`（Product Flavor）
@@ -442,13 +451,11 @@ asb build --config multi-layer-theme.json
 ```
 
 配置示例：
+
 ```json
 {
   "resourceDir": "./base/res",
-  "additionalResourceDirs": [
-    "./themes/dark/res",
-    "./branding/custom/res"
-  ]
+  "additionalResourceDirs": ["./themes/dark/res", "./branding/custom/res"]
 }
 ```
 

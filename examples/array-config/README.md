@@ -14,6 +14,7 @@ The `asb.config.json` file uses an object format with common fields at the top l
   "incremental": true,
   "versionCode": 1,
   "versionName": "1.0.0",
+  "maxParallelBuilds": 2,
   "apps": [
     {
       "baseDir": "./app1",
@@ -30,11 +31,21 @@ The `asb.config.json` file uses an object format with common fields at the top l
 ## New Features Demonstrated
 
 ### baseDir Configuration
+
 When `baseDir` is specified (either at the top level or per app):
+
 - `resourceDir` defaults to `$baseDir/res`
 - `manifestPath` defaults to `$baseDir/AndroidManifest.xml`
 
 This eliminates the need to specify these paths explicitly when following standard Android project structure.
+
+### maxParallelBuilds Configuration
+
+The `maxParallelBuilds` field controls how many skin packages can be built simultaneously:
+
+- Defaults to the number of CPU cores if not specified
+- Set to a lower value if you want to limit resource usage
+- In this example, it's set to 2 to build both apps in parallel
 
 ### Benefits
 
@@ -57,5 +68,6 @@ This will build both `app1` and `app2` skin packages in parallel, since they hav
 ## Output
 
 The build will generate two skin packages in the `build` directory:
+
 - `com.example.skin.app1.skin`
 - `com.example.skin.app2.skin`

@@ -5,6 +5,7 @@
   "incremental": true,
   "versionCode": 1,
   "versionName": "1.0.0",
+  "maxParallelBuilds": 2,
   "apps": [
     {
       "baseDir": "./app1",

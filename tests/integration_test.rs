@@ -19,7 +19,7 @@ fn test_load_single_config_from_json() {
 
     // Parse as single config
     let config: BuildConfig = serde_json::from_str(json).unwrap();
-    
+
     assert_eq!(config.package_name, "com.example.test");
     assert_eq!(config.resource_dir, PathBuf::from("./res"));
     assert_eq!(config.manifest_path, PathBuf::from("./AndroidManifest.xml"));
@@ -54,13 +54,13 @@ fn test_load_array_config_from_json() {
 
     // Parse as array config
     let configs: Vec<BuildConfig> = serde_json::from_str(json).unwrap();
-    
+
     assert_eq!(configs.len(), 2);
-    
+
     assert_eq!(configs[0].package_name, "com.example.app1");
     assert_eq!(configs[0].resource_dir, PathBuf::from("./app1/res"));
     assert_eq!(configs[0].version_code, Some(1));
-    
+
     assert_eq!(configs[1].package_name, "com.example.app2");
     assert_eq!(configs[1].resource_dir, PathBuf::from("./app2/res"));
     assert_eq!(configs[1].version_code, Some(2));
@@ -87,12 +87,12 @@ fn test_array_config_with_additional_resources() {
     ]"#;
 
     let configs: Vec<BuildConfig> = serde_json::from_str(json).unwrap();
-    
+
     assert_eq!(configs.len(), 2);
-    
+
     // Base config has no additional resources
     assert!(configs[0].additional_resource_dirs.is_none());
-    
+
     // Feature config has additional resources
     assert!(configs[1].additional_resource_dirs.is_some());
     let additional = configs[1].additional_resource_dirs.as_ref().unwrap();
@@ -136,23 +136,30 @@ fn test_config_with_all_optional_fields() {
         "versionName": "3.14.159",
         "additionalResourceDirs": ["./extra/res"],
         "compiledDir": "./compiled",
-        "stableIdsFile": "./stable-ids.txt",
-        "parallelWorkers": 8
+        "stableIdsFile": "./stable-ids.txt"
     }"#;
 
     let config: BuildConfig = serde_json::from_str(json).unwrap();
-    
+
     assert_eq!(config.package_name, "com.example.full");
     assert_eq!(config.aapt2_path, Some(PathBuf::from("/path/to/aapt2")));
-    assert_eq!(config.aar_files, Some(vec![PathBuf::from("/path/to/lib.aar")]));
+    assert_eq!(
+        config.aar_files,
+        Some(vec![PathBuf::from("/path/to/lib.aar")])
+    );
     assert_eq!(config.incremental, Some(true));
     assert_eq!(config.cache_dir, Some(PathBuf::from("./cache")));
     assert_eq!(config.version_code, Some(42));
     assert_eq!(config.version_name, Some("3.14.159".to_string()));
-    assert_eq!(config.additional_resource_dirs, Some(vec![PathBuf::from("./extra/res")]));
+    assert_eq!(
+        config.additional_resource_dirs,
+        Some(vec![PathBuf::from("./extra/res")])
+    );
     assert_eq!(config.compiled_dir, Some(PathBuf::from("./compiled")));
-    assert_eq!(config.stable_ids_file, Some(PathBuf::from("./stable-ids.txt")));
-    assert_eq!(config.parallel_workers, Some(8));
+    assert_eq!(
+        config.stable_ids_file,
+        Some(PathBuf::from("./stable-ids.txt"))
+    );
 }
 
 #[test]
@@ -178,24 +185,30 @@ fn test_multi_app_config_object_format() {
     }"#;
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
-    
+
     assert_eq!(multi_config.output_dir, PathBuf::from("./build"));
-    assert_eq!(multi_config.android_jar, PathBuf::from("/path/to/android.jar"));
+    assert_eq!(
+        multi_config.android_jar,
+        PathBuf::from("/path/to/android.jar")
+    );
     assert_eq!(multi_config.incremental, Some(true));
     assert_eq!(multi_config.version_code, Some(1));
     assert_eq!(multi_config.version_name, Some("1.0.0".to_string()));
     assert_eq!(multi_config.apps.len(), 2);
-    
+
     // Convert to BuildConfigs
     let configs = multi_config.into_build_configs();
-    
+
     assert_eq!(configs.len(), 2);
     assert_eq!(configs[0].package_name, "com.example.app1");
     assert_eq!(configs[0].resource_dir, PathBuf::from("./app1/res"));
     assert_eq!(configs[0].output_dir, PathBuf::from("./build"));
-    assert_eq!(configs[0].android_jar, PathBuf::from("/path/to/android.jar"));
+    assert_eq!(
+        configs[0].android_jar,
+        PathBuf::from("/path/to/android.jar")
+    );
     assert_eq!(configs[0].incremental, Some(true));
-    
+
     assert_eq!(configs[1].package_name, "com.example.app2");
     assert_eq!(configs[1].resource_dir, PathBuf::from("./app2/res"));
 }
@@ -223,14 +236,17 @@ fn test_multi_app_with_dependencies() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     assert_eq!(configs.len(), 2);
     assert_eq!(configs[0].package_name, "com.example.base");
     assert!(configs[0].additional_resource_dirs.is_none());
-    
+
     assert_eq!(configs[1].package_name, "com.example.feature");
     assert!(configs[1].additional_resource_dirs.is_some());
-    assert_eq!(configs[1].additional_resource_dirs.as_ref().unwrap().len(), 1);
+    assert_eq!(
+        configs[1].additional_resource_dirs.as_ref().unwrap().len(),
+        1
+    );
 }
 
 #[test]
@@ -258,11 +274,11 @@ fn test_multi_app_with_app_specific_overrides() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     // First app uses common version
     assert_eq!(configs[0].version_code, Some(1));
     assert_eq!(configs[0].version_name, Some("1.0.0".to_string()));
-    
+
     // Second app overrides version
     assert_eq!(configs[1].version_code, Some(2));
     assert_eq!(configs[1].version_name, Some("2.0.0".to_string()));
@@ -287,14 +303,20 @@ fn test_multi_app_with_base_dir() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     // First app uses common baseDir
     assert_eq!(configs[0].resource_dir, PathBuf::from("./apps/res"));
-    assert_eq!(configs[0].manifest_path, PathBuf::from("./apps/AndroidManifest.xml"));
-    
+    assert_eq!(
+        configs[0].manifest_path,
+        PathBuf::from("./apps/AndroidManifest.xml")
+    );
+
     // Second app overrides baseDir
     assert_eq!(configs[1].resource_dir, PathBuf::from("./custom/res"));
-    assert_eq!(configs[1].manifest_path, PathBuf::from("./custom/AndroidManifest.xml"));
+    assert_eq!(
+        configs[1].manifest_path,
+        PathBuf::from("./custom/AndroidManifest.xml")
+    );
 }
 
 #[test]
@@ -320,10 +342,10 @@ fn test_multi_app_with_output_file() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     // First app uses common outputFile
     assert_eq!(configs[0].output_file, Some("custom.skin".to_string()));
-    
+
     // Second app overrides outputFile
     assert_eq!(configs[1].output_file, Some("app2-custom.skin".to_string()));
 }
@@ -348,14 +370,20 @@ fn test_app_config_base_dir_with_overrides() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     // First app derives both from baseDir
     assert_eq!(configs[0].resource_dir, PathBuf::from("./myapp/res"));
-    assert_eq!(configs[0].manifest_path, PathBuf::from("./myapp/AndroidManifest.xml"));
-    
+    assert_eq!(
+        configs[0].manifest_path,
+        PathBuf::from("./myapp/AndroidManifest.xml")
+    );
+
     // Second app overrides resourceDir but derives manifestPath from baseDir
     assert_eq!(configs[1].resource_dir, PathBuf::from("./custom/res"));
-    assert_eq!(configs[1].manifest_path, PathBuf::from("./otherapp/AndroidManifest.xml"));
+    assert_eq!(
+        configs[1].manifest_path,
+        PathBuf::from("./otherapp/AndroidManifest.xml")
+    );
 }
 
 #[test]
@@ -382,14 +410,14 @@ fn test_app_with_flavors() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     // Should have 2 configs (one per flavor)
     assert_eq!(configs.len(), 2);
-    
+
     // Free flavor
     assert_eq!(configs[0].package_name, "com.example.app.free");
     assert_eq!(configs[0].resource_dir, PathBuf::from("./myapp/res"));
-    
+
     // Pro flavor with override
     assert_eq!(configs[1].package_name, "com.example.app.pro");
     assert_eq!(configs[1].version_code, Some(2));
@@ -424,14 +452,14 @@ fn test_flavors_with_overrides() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     assert_eq!(configs.len(), 2);
-    
+
     // Free flavor overrides
     assert_eq!(configs[0].package_name, "com.example.free");
     assert_eq!(configs[0].output_file, Some("free.skin".to_string()));
     assert_eq!(configs[0].resource_dir, PathBuf::from("./myapp/res"));
-    
+
     // Pro flavor overrides including baseDir
     assert_eq!(configs[1].package_name, "com.example.pro");
     assert_eq!(configs[1].output_file, Some("pro.skin".to_string()));
@@ -465,11 +493,37 @@ fn test_multiple_apps_with_flavors() {
 
     let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
     let configs = multi_config.into_build_configs();
-    
+
     // Should have 3 configs (1 for app1, 2 for app2 flavors)
     assert_eq!(configs.len(), 3);
-    
+
     assert_eq!(configs[0].package_name, "com.example.app1");
     assert_eq!(configs[1].package_name, "com.example.app2.dev");
     assert_eq!(configs[2].package_name, "com.example.app2.prod");
+}
+
+#[test]
+fn test_multi_app_with_max_parallel_builds() {
+    let json = r#"{
+        "outputDir": "./build",
+        "androidJar": "/path/to/android.jar",
+        "maxParallelBuilds": 4,
+        "apps": [
+            {
+                "resourceDir": "./app1/res",
+                "manifestPath": "./app1/AndroidManifest.xml",
+                "packageName": "com.example.app1"
+            },
+            {
+                "resourceDir": "./app2/res",
+                "manifestPath": "./app2/AndroidManifest.xml",
+                "packageName": "com.example.app2"
+            }
+        ]
+    }"#;
+
+    let multi_config: asb::types::MultiAppConfig = serde_json::from_str(json).unwrap();
+
+    assert_eq!(multi_config.max_parallel_builds, Some(4));
+    assert_eq!(multi_config.apps.len(), 2);
 }

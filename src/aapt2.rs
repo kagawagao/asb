@@ -82,6 +82,11 @@ impl Aapt2 {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
+    /// Get the aapt2 executable path
+    pub fn into_path(self) -> PathBuf {
+        self.aapt2_path
+    }
+
     /// Compile a directory of resources
     pub fn compile_dir(&self, resource_dir: &Path, output_dir: &Path) -> Result<CompileResult> {
         std::fs::create_dir_all(output_dir)?;
@@ -95,15 +100,52 @@ impl Aapt2 {
             .arg("-o")
             .arg(output_dir)
             .output()
-            .context("Failed to execute aapt2 compile")?;
+            .with_context(|| {
+                format!(
+                    "Failed to execute aapt2 compile\n\
+                     aapt2 path: {}\n\
+                     Resource dir: {}\n\
+                     Output dir: {}\n\
+                     \nPossible causes:\n\
+                     - aapt2 binary not found or not executable\n\
+                     - Resource directory does not exist or is not readable\n\
+                     - Insufficient permissions to write to output directory",
+                    self.aapt2_path.display(),
+                    resource_dir.display(),
+                    output_dir.display()
+                )
+            })?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
 
         if !output.status.success() {
+            let mut error_msg = String::new();
+
+            if !stderr.is_empty() {
+                error_msg.push_str("aapt2 compile stderr:\n");
+                error_msg.push_str(&stderr);
+            }
+
+            if !stdout.is_empty() {
+                if !error_msg.is_empty() {
+                    error_msg.push('\n');
+                }
+                error_msg.push_str("aapt2 compile stdout:\n");
+                error_msg.push_str(&stdout);
+            }
+
+            if error_msg.is_empty() {
+                error_msg = format!(
+                    "aapt2 compile failed with exit code {:?}",
+                    output.status.code()
+                );
+            }
+
             return Ok(CompileResult {
                 success: false,
                 flat_files: vec![],
-                errors: vec![stderr.to_string()],
+                errors: vec![error_msg],
             });
         }
 
@@ -139,11 +181,27 @@ impl Aapt2 {
                     .arg(output_dir)
                     .arg(file)
                     .output()
-                    .context("Failed to execute aapt2 compile")?;
+                    .with_context(|| {
+                        format!(
+                            "Failed to execute aapt2 compile for {}\n\
+                             aapt2: {}\n\
+                             Output: {}",
+                            file.display(),
+                            self.aapt2_path.display(),
+                            output_dir.display()
+                        )
+                    })?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    anyhow::bail!("Failed to compile {}: {}", file.display(), stderr);
+                    anyhow::bail!(
+                        "Failed to compile {}\n\
+                         Stderr: {}\n\
+                         aapt2: {}",
+                        file.display(),
+                        stderr,
+                        self.aapt2_path.display()
+                    );
                 }
 
                 // Predict the flat file name based on the resource file path
@@ -156,13 +214,16 @@ impl Aapt2 {
                             // Try different naming patterns based on resource type
                             let possible_names = if parent_name.starts_with("values") {
                                 // For values resources: values_strings.arsc.flat
-                                vec![format!("{}_{}.arsc.flat", parent_name,
-                                    file.file_stem().and_then(|s| s.to_str()).unwrap_or(""))]
+                                vec![format!(
+                                    "{}_{}.arsc.flat",
+                                    parent_name,
+                                    file.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+                                )]
                             } else {
                                 // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
                                 vec![format!("{}_{}.flat", parent_name, file_name)]
                             };
-                            
+
                             for flat_name in possible_names {
                                 let flat_path = output_dir.join(&flat_name);
                                 if flat_path.exists() {
@@ -172,7 +233,7 @@ impl Aapt2 {
                         }
                     }
                 }
-                
+
                 anyhow::bail!("Could not find compiled flat file for {}", file.display())
             })
             .collect();
@@ -195,10 +256,11 @@ impl Aapt2 {
     }
 
     /// Compile a single resource file
+    #[allow(dead_code)]
     fn compile_single_file(&self, resource_file: &Path, output_dir: &Path) -> Result<PathBuf> {
         // Get existing flat files before compilation
         let before_files = Self::collect_flat_files(output_dir)?;
-        
+
         let output = Command::new(&self.aapt2_path)
             .arg("compile")
             .arg("-o")
@@ -214,17 +276,17 @@ impl Aapt2 {
 
         // Get flat files after compilation - the new one is our result
         let after_files = Self::collect_flat_files(output_dir)?;
-        
+
         // Find the newly created flat file
         for file in &after_files {
             if !before_files.contains(file) {
                 return Ok(file.clone());
             }
         }
-        
+
         // If we didn't find a new file, it might have been overwritten
         // In that case, try to guess the name based on the resource file path
-        // aapt2 creates names like: 
+        // aapt2 creates names like:
         //   - values_strings.arsc.flat for res/values/strings.xml
         //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
         if let Some(parent) = resource_file.parent() {
@@ -233,13 +295,19 @@ impl Aapt2 {
                     // Try different naming patterns based on resource type
                     let possible_names = if parent_name.starts_with("values") {
                         // For values resources: values_strings.arsc.flat
-                        vec![format!("{}_{}.arsc.flat", parent_name, 
-                            resource_file.file_stem().and_then(|s| s.to_str()).unwrap_or(""))]
+                        vec![format!(
+                            "{}_{}.arsc.flat",
+                            parent_name,
+                            resource_file
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("")
+                        )]
                     } else {
                         // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
                         vec![format!("{}_{}.flat", parent_name, file_name)]
                     };
-                    
+
                     for flat_name in possible_names {
                         let flat_path = output_dir.join(&flat_name);
                         if flat_path.exists() {
@@ -249,8 +317,11 @@ impl Aapt2 {
                 }
             }
         }
-        
-        anyhow::bail!("Could not find compiled flat file for {}", resource_file.display())
+
+        anyhow::bail!(
+            "Could not find compiled flat file for {}",
+            resource_file.display()
+        )
     }
 
     /// Link compiled resources into an APK with overlay support
@@ -259,7 +330,7 @@ impl Aapt2 {
     pub fn link_with_overlays(
         &self,
         base_flat_files: &[PathBuf],
-        overlay_flat_files: &[Vec<PathBuf>],  // Vec of overlay sets, ordered by priority
+        overlay_flat_files: &[Vec<PathBuf>], // Vec of overlay sets, ordered by priority
         manifest_path: &Path,
         android_jar: &Path,
         output_apk: &Path,
@@ -270,9 +341,42 @@ impl Aapt2 {
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
     ) -> Result<LinkResult> {
-        debug!("Linking {} base flat files with {} overlay sets", 
-               base_flat_files.len(), overlay_flat_files.len());
+        debug!(
+            "Linking {} base flat files with {} overlay sets",
+            base_flat_files.len(),
+            overlay_flat_files.len()
+        );
 
+        self.link_with_command_line(
+            base_flat_files,
+            overlay_flat_files,
+            manifest_path,
+            android_jar,
+            output_apk,
+            package_name,
+            version_code,
+            version_name,
+            stable_ids_file,
+            package_id,
+            min_sdk_version,
+        )
+    }
+
+    /// Link using command line arguments
+    fn link_with_command_line(
+        &self,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],
+        manifest_path: &Path,
+        android_jar: &Path,
+        output_apk: &Path,
+        package_name: Option<&str>,
+        version_code: Option<u32>,
+        version_name: Option<&str>,
+        stable_ids_file: Option<&Path>,
+        package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
+    ) -> Result<LinkResult> {
         let mut cmd = Command::new(&self.aapt2_path);
         cmd.arg("link")
             .arg("--manifest")
@@ -330,29 +434,52 @@ impl Aapt2 {
             }
         }
 
-        let output = cmd.output().context("Failed to execute aapt2 link")?;
+        // Debug: print the full command for troubleshooting
+        debug!("Executing aapt2 link command: {:?}", cmd);
 
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let output = cmd.output().with_context(|| {
+            format!(
+                "Failed to execute aapt2 link\n\
+                 aapt2 path: {}\n\
+                 Manifest: {}\n\
+                 Android JAR: {}\n\
+                 Output: {}\n\
+                 Base files: {}\n\
+                 Overlay sets: {}\n\
+                 \nPossible causes:\n\
+                 - aapt2 binary not found or not executable\n\
+                 - Manifest file is invalid or corrupted\n\
+                 - Android JAR path is incorrect\n\
+                 - Insufficient permissions to write output file",
+                self.aapt2_path.display(),
+                manifest_path.display(),
+                android_jar.display(),
+                output_apk.display(),
+                base_flat_files.len(),
+                overlay_flat_files.len()
+            )
+        })?;
 
-        if !output.status.success() {
-            return Ok(LinkResult {
-                success: false,
-                apk_path: None,
-                errors: vec![stderr.to_string()],
-            });
-        }
-
-        Ok(LinkResult {
-            success: true,
-            apk_path: Some(output_apk.to_path_buf()),
-            errors: vec![],
-        })
+        self.process_link_output(
+            output,
+            manifest_path,
+            android_jar,
+            output_apk,
+            package_name,
+            version_code,
+            version_name,
+            stable_ids_file,
+            package_id,
+            base_flat_files,
+            overlay_flat_files,
+            min_sdk_version,
+        )
     }
 
-    /// Link compiled resources into an APK
-    pub fn link(
+    /// Process the output from aapt2 link command
+    fn process_link_output(
         &self,
-        flat_files: &[PathBuf],
+        output: std::process::Output,
         manifest_path: &Path,
         android_jar: &Path,
         output_apk: &Path,
@@ -361,68 +488,92 @@ impl Aapt2 {
         version_name: Option<&str>,
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],
         min_sdk_version: Option<u32>,
     ) -> Result<LinkResult> {
-        debug!("Linking {} flat files", flat_files.len());
-
-        let mut cmd = Command::new(&self.aapt2_path);
-        cmd.arg("link")
-            .arg("--manifest")
-            .arg(manifest_path)
-            .arg("-I")
-            .arg(android_jar)
-            .arg("-o")
-            .arg(output_apk)
-            .arg("--auto-add-overlay")
-            .arg("--no-version-vectors")
-            // Keep resource files in the APK (not just resources.arsc)
-            .arg("--keep-raw-values")
-            // Allow references to resources not defined in this package
-            .arg("--allow-reserved-package-id")
-            .arg("--no-resource-removal");
-
-        if let Some(pkg) = package_name {
-            cmd.arg("--rename-manifest-package").arg(pkg);
-            cmd.arg("--rename-resources-package").arg(pkg);
-        }
-
-        if let Some(code) = version_code {
-            cmd.arg("--version-code").arg(code.to_string());
-        }
-
-        if let Some(name) = version_name {
-            cmd.arg("--version-name").arg(name);
-        }
-
-        if let Some(min_sdk) = min_sdk_version {
-            cmd.arg("--min-sdk-version").arg(min_sdk.to_string());
-        }
-
-        if let Some(stable_ids) = stable_ids_file {
-            cmd.arg("--stable-ids").arg(stable_ids);
-            cmd.arg("--emit-ids").arg(stable_ids);
-        }
-
-        // Set package ID for resource IDs
-        // This is critical for dynamic resource loading via new Resources()
-        // Default to standard app package ID if not specified
-        let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
-        cmd.arg("--package-id").arg(pkg_id);
-
-        // Add all flat files
-        for flat_file in flat_files {
-            cmd.arg(flat_file);
-        }
-
-        let output = cmd.output().context("Failed to execute aapt2 link")?;
-
+        let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !output.status.success() {
+            // Construct detailed error message - prioritize actual aapt2 output
+            let mut error_msg = String::new();
+
+            // Show the actual command that was executed for manual debugging
+            error_msg.push_str("Failed aapt2 command:\n");
+            error_msg.push_str(&format!("  {}\n", self.aapt2_path.display()));
+            error_msg.push_str(&format!("    link --manifest {} -I {} -o {} --auto-add-overlay --no-version-vectors --keep-raw-values --allow-reserved-package-id --no-resource-removal",
+                manifest_path.display(),
+                android_jar.display(),
+                output_apk.display()));
+            if let Some(pkg) = package_name {
+                error_msg.push_str(&format!(
+                    " --rename-manifest-package {} --rename-resources-package {}",
+                    pkg, pkg
+                ));
+            }
+            if let Some(code) = version_code {
+                error_msg.push_str(&format!(" --version-code {}", code));
+            }
+            if let Some(name) = version_name {
+                error_msg.push_str(&format!(" --version-name {}", name));
+            }
+            if let Some(min_sdk) = min_sdk_version {
+                error_msg.push_str(&format!(" --min-sdk-version {}", min_sdk));
+            }
+            if let Some(stable_ids) = stable_ids_file {
+                error_msg.push_str(&format!(
+                    " --stable-ids {} --emit-ids {}",
+                    stable_ids.display(),
+                    stable_ids.display()
+                ));
+            }
+            error_msg.push_str(&format!(
+                " --package-id {}",
+                package_id.unwrap_or(DEFAULT_PACKAGE_ID)
+            ));
+
+            // Add file counts instead of listing all files
+            error_msg.push_str(&format!(" [{}  base flat files]", base_flat_files.len()));
+            for (i, overlay_set) in overlay_flat_files.iter().enumerate() {
+                error_msg.push_str(&format!(
+                    " [-R {} overlay files (set {})]",
+                    overlay_set.len(),
+                    i + 1
+                ));
+            }
+            error_msg.push_str("\n\n");
+
+            // Show actual error output
+            if !stderr.is_empty() {
+                error_msg.push_str("aapt2 stderr:\n");
+                error_msg.push_str(&stderr);
+                error_msg.push('\n');
+            }
+
+            if !stdout.is_empty() {
+                error_msg.push_str("\naapt2 stdout:\n");
+                error_msg.push_str(&stdout);
+                error_msg.push('\n');
+            }
+
+            // Then show context
+            error_msg.push_str(&format!("\nExit code: {:?}\n", output.status.code()));
+            error_msg.push_str("\nCommand context:\n");
+            error_msg.push_str(&format!("  aapt2: {}\n", self.aapt2_path.display()));
+            error_msg.push_str(&format!("  Manifest: {}\n", manifest_path.display()));
+            error_msg.push_str(&format!("  Android JAR: {}\n", android_jar.display()));
+            error_msg.push_str(&format!("  Output APK: {}\n", output_apk.display()));
+            error_msg.push_str(&format!("  Base flat files: {}\n", base_flat_files.len()));
+            error_msg.push_str(&format!("  Overlay sets: {}\n", overlay_flat_files.len()));
+            if let Some(pkg) = package_name {
+                error_msg.push_str(&format!("  Package: {}\n", pkg));
+            }
+
             return Ok(LinkResult {
                 success: false,
                 apk_path: None,
-                errors: vec![stderr.to_string()],
+                errors: vec![error_msg],
             });
         }
 

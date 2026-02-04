@@ -71,11 +71,13 @@ cargo test -- --nocapture
 The test suite covers:
 
 ✅ **Configuration Loading**
+
 - Single object format (backward compatibility)
 - Array format (new feature)
 - Fallback from array to single object parsing
 
 ✅ **Dependency Resolution**
+
 - Independent configurations (parallel build)
 - Dependent configurations (sequential build)
 - Mixed independent and dependent configurations
@@ -83,11 +85,14 @@ The test suite covers:
 - Topological sort correctness
 
 ✅ **Configuration Fields**
+
 - Required fields: `resourceDir`, `manifestPath`, `outputDir`, `packageName`, `androidJar`
 - Optional fields: `aapt2Path`, `aarFiles`, `incremental`, `cacheDir`, `versionCode`, `versionName`
-- Array-specific fields: `additionalResourceDirs`, `compiledDir`, `stableIdsFile`, `parallelWorkers`
+- Array-specific fields: `additionalResourceDirs`, `compiledDir`, `stableIdsFile`
+- Multi-app specific fields: `maxParallelBuilds` (controls how many apps can be built in parallel)
 
 ✅ **Edge Cases**
+
 - Empty configurations
 - Single configuration in array mode
 - Circular dependencies (should be detected and fail)
@@ -135,10 +140,10 @@ To add new tests:
 fn test_my_feature() {
     // Setup
     let config = BuildConfig { /* ... */ };
-    
+
     // Execute
     let result = some_function(config);
-    
+
     // Assert
     assert_eq!(result.something, expected_value);
 }

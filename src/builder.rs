@@ -13,22 +13,23 @@ use crate::types::{BuildConfig, BuildResult, CompileResult};
 /// Normalize a resource path by removing version qualifiers
 /// e.g., "res/drawable-v21/icon.xml" -> "res/drawable/icon.xml"
 /// e.g., "res/color-v11/primary.xml" -> "res/color/primary.xml"
+#[allow(dead_code)]
 fn normalize_resource_path(path: &str) -> String {
     if !path.starts_with("res/") {
         return path.to_string();
     }
-    
+
     let parts: Vec<&str> = path.split('/').collect();
     if parts.len() < 3 {
         return path.to_string();
     }
-    
+
     // parts[0] = "res"
     // parts[1] = resource type (e.g., "drawable-v21", "mipmap-xxhdpi-v4")
     // parts[2..] = file path
-    
+
     let res_type = parts[1];
-    
+
     // Remove version qualifiers like -v21, -v11, -v4, etc.
     // Also handle complex qualifiers like "mipmap-xxhdpi-v4" -> "mipmap-xxhdpi"
     let normalized_type = if let Some(v_pos) = res_type.rfind("-v") {
@@ -42,7 +43,7 @@ fn normalize_resource_path(path: &str) -> String {
     } else {
         res_type.to_string()
     };
-    
+
     // Reconstruct the path
     format!("res/{}/{}", normalized_type, parts[2..].join("/"))
 }
@@ -79,35 +80,38 @@ fn inject_package_if_needed(
     output_dir: &Path,
 ) -> Result<PathBuf> {
     let manifest_content = fs::read_to_string(manifest_path)?;
-    
+
     if manifest_content.contains("package=") {
         // Manifest already has package attribute, use as-is
         return Ok(manifest_path.to_path_buf());
     }
-    
-    warn!("AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"", package_name);
-    
+
+    warn!(
+        "AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"",
+        package_name
+    );
+
     // Need to inject package attribute
     let mut modified_content = manifest_content;
-    
+
     // Find the <manifest tag and inject the package attribute
     if let Some(pos) = modified_content.find("<manifest") {
         // Find the end of the opening tag
         if let Some(end_pos) = modified_content[pos..].find('>') {
             let end_index = pos + end_pos;
-            
+
             // Insert package attribute before the closing >
             let insert_pos = end_index;
             let package_attr = format!("\n    package=\"{}\"", package_name);
             modified_content.insert_str(insert_pos, &package_attr);
         }
     }
-    
+
     // Write to temporary file
     fs::create_dir_all(output_dir)?;
     let temp_manifest = output_dir.join(".temp_AndroidManifest.xml");
     fs::write(&temp_manifest, modified_content)?;
-    
+
     Ok(temp_manifest)
 }
 
@@ -144,7 +148,29 @@ impl SkinBuilder {
 
     /// Build the skin package
     pub async fn build(&mut self) -> Result<BuildResult> {
+        let build_start = std::time::Instant::now();
+
         info!("Starting build for package: {}", self.config.package_name);
+
+        // Initialize rayon thread pool with CPU cores * 2
+        // This is automatically set and not user-configurable for resource compilation
+        let worker_threads = num_cpus::get() * 2;
+        if rayon::ThreadPoolBuilder::new()
+            .num_threads(worker_threads)
+            .build_global()
+            .is_ok()
+        {
+            debug!(
+                "Initialized rayon thread pool with {} workers (CPU cores * 2)",
+                worker_threads
+            );
+        } else {
+            // Thread pool already initialized, just report current size
+            debug!(
+                "Rayon thread pool already initialized with {} workers",
+                rayon::current_num_threads()
+            );
+        }
 
         // Ensure output directories exist
         let compiled_dir = self
@@ -182,14 +208,17 @@ impl SkinBuilder {
         }
 
         // Compile resources - compile each directory separately to avoid file name conflicts
-        info!("Compiling resources from {} directories...", resource_dirs.len());
+        info!(
+            "Compiling resources from {} directories...",
+            resource_dirs.len()
+        );
         let mut missing_dirs = Vec::new();
         let mut valid_resource_dirs = Vec::new();
-        
+
         // Track flat files by priority level for proper ordering
         // Flat files will be collected per directory and ordered by priority
         let mut flat_files_by_priority: Vec<(ResourcePriority, Vec<PathBuf>, PathBuf)> = Vec::new();
-        
+
         // Track which directory corresponds to which priority
         // Following Android standard priority: Library (AAR) < Main < Additional (Flavors/BuildTypes)
         // Directory index 0 is always the main resource directory
@@ -203,11 +232,11 @@ impl SkinBuilder {
                 // Use a separate compiled subdirectory for each resource directory to avoid flat file conflicts
                 let module_compiled_dir = compiled_dir.join(format!("module_{}", idx));
                 std::fs::create_dir_all(&module_compiled_dir)?;
-                
+
                 let files = self.find_resource_files(res_dir)?;
                 if !files.is_empty() {
                     let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
-                    
+
                     // Determine priority for this resource directory
                     // Android standard: Library < Main < Additional
                     let priority = if idx == main_res_idx {
@@ -219,8 +248,12 @@ impl SkinBuilder {
                         // Additional resources (flavors/build types) have HIGHEST priority
                         ResourcePriority::Additional(idx - additional_start_idx)
                     };
-                    
-                    debug!("Resource directory {} has priority {:?}", res_dir.display(), priority);
+
+                    debug!(
+                        "Resource directory {} has priority {:?}",
+                        res_dir.display(),
+                        priority
+                    );
                     flat_files_by_priority.push((priority, flat_files, res_dir.clone()));
                 }
                 valid_resource_dirs.push(res_dir.clone());
@@ -234,52 +267,75 @@ impl SkinBuilder {
         // Following Android standard: Library (AAR) < Main < Additional (Flavors/BuildTypes)
         // Strategy: Use the lowest priority resources as base, everything else as overlay
         flat_files_by_priority.sort_by_key(|(priority, _, _)| priority.value());
-        
+
         let mut base_flat_files = Vec::new();
         let mut overlay_flat_files = Vec::new();
-        
+
         // Determine what should be base vs overlay
         // If there are Library resources, they are base and everything else is overlay
         // If there are no Library resources, Main is base and Additional are overlays
-        let has_library = flat_files_by_priority.iter().any(|(p, _, _)| matches!(p, ResourcePriority::Library(_)));
-        
+        let has_library = flat_files_by_priority
+            .iter()
+            .any(|(p, _, _)| matches!(p, ResourcePriority::Library(_)));
+
         for (priority, files, dir) in &flat_files_by_priority {
             match priority {
                 ResourcePriority::Library(_) => {
                     // Libraries are always base (lowest priority)
-                    debug!("Base resources (Library): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                    debug!(
+                        "Base resources (Library): {} files from {} (priority {:?})",
+                        files.len(),
+                        dir.display(),
+                        priority
+                    );
                     base_flat_files.extend(files.clone());
                 }
                 ResourcePriority::Main => {
                     if has_library {
                         // If we have libraries, Main is an overlay
-                        debug!("Overlay resources (Main): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                        debug!(
+                            "Overlay resources (Main): {} files from {} (priority {:?})",
+                            files.len(),
+                            dir.display(),
+                            priority
+                        );
                         overlay_flat_files.push(files.clone());
                     } else {
                         // If no libraries, Main is the base
-                        debug!("Base resources (Main): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                        debug!(
+                            "Base resources (Main): {} files from {} (priority {:?})",
+                            files.len(),
+                            dir.display(),
+                            priority
+                        );
                         base_flat_files.extend(files.clone());
                     }
                 }
                 ResourcePriority::Additional(_) => {
                     // Additional resources (flavors/build types) are always overlays
-                    debug!("Overlay resources (Additional): {} files from {} (priority {:?})", files.len(), dir.display(), priority);
+                    debug!(
+                        "Overlay resources (Additional): {} files from {} (priority {:?})",
+                        files.len(),
+                        dir.display(),
+                        priority
+                    );
                     overlay_flat_files.push(files.clone());
                 }
             }
         }
-        
+
         info!("Resource compilation complete: {} base files, {} overlay sets (following Android resource priority)", 
               base_flat_files.len(), overlay_flat_files.len());
-        
-        let total_flat_files = base_flat_files.len() + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
+
+        let total_flat_files =
+            base_flat_files.len() + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
 
         if total_flat_files == 0 {
             AarExtractor::cleanup_aars(&aar_infos)?;
-            
+
             // Provide helpful error message
             let mut error_msg = String::from("No resources found to compile.\n\n");
-            
+
             if !missing_dirs.is_empty() {
                 error_msg.push_str("The following resource directories do not exist:\n");
                 for dir in &missing_dirs {
@@ -287,17 +343,20 @@ impl SkinBuilder {
                 }
                 error_msg.push_str("\n");
             }
-            
+
             error_msg.push_str("Possible solutions:\n");
             error_msg.push_str("  1. Make sure you're running 'asb build' from your Android project root directory\n");
             error_msg.push_str("  2. Create a config file with: asb init\n");
             error_msg.push_str("  3. Specify custom paths with: asb build --resource-dir <path> --manifest <path> --android-jar <path>\n");
-            error_msg.push_str("  4. Check that your resource directory contains valid Android resources\n");
-            
+            error_msg.push_str(
+                "  4. Check that your resource directory contains valid Android resources\n",
+            );
+
             return Ok(BuildResult {
                 success: false,
                 apk_path: None,
                 errors: vec![error_msg],
+                build_duration: build_start.elapsed(),
             });
         }
 
@@ -326,10 +385,13 @@ impl SkinBuilder {
 
         // Link resources into skin package using overlay strategy
         info!("Linking resources with Android resource priority strategy...");
-        let output_filename = self.config.output_file.as_ref()
+        let output_filename = self
+            .config
+            .output_file
+            .as_ref()
             .map(|f| f.clone())
             .unwrap_or_else(|| format!("{}.skin", self.config.package_name));
-        
+
         let output_apk = self.config.output_dir.join(output_filename);
 
         let link_result = self.aapt2.link_with_overlays(
@@ -364,6 +426,7 @@ impl SkinBuilder {
                 success: false,
                 apk_path: None,
                 errors: link_result.errors,
+                build_duration: build_start.elapsed(),
             });
         }
 
@@ -376,6 +439,7 @@ impl SkinBuilder {
             success: true,
             apk_path: link_result.apk_path,
             errors: vec![],
+            build_duration: build_start.elapsed(),
         })
     }
 
@@ -387,13 +451,17 @@ impl SkinBuilder {
         // including layouts, drawables, and other resource files in binary XML format.
         // Resources.arsc contains the resource table with IDs and references.
         // The compiled binary XML files are what Android expects at runtime.
-        
+
         // No additional processing needed - aapt2 has done everything correctly
         Ok(())
     }
 
     /// Compile all resource files from multiple directories
-    fn compile_all_resources(&mut self, resource_files: &[PathBuf], compiled_dir: &Path) -> Result<Vec<PathBuf>> {
+    fn compile_all_resources(
+        &mut self,
+        resource_files: &[PathBuf],
+        compiled_dir: &Path,
+    ) -> Result<Vec<PathBuf>> {
         // If incremental build is disabled or no cache, compile all files together
         if self.cache.is_none() {
             // Clear compiled directory to avoid stale flat files
@@ -401,9 +469,11 @@ impl SkinBuilder {
                 std::fs::remove_dir_all(compiled_dir)?;
             }
             std::fs::create_dir_all(compiled_dir)?;
-            
+
             // Compile all files in parallel
-            let result = self.aapt2.compile_files_parallel(resource_files, compiled_dir)?;
+            let result = self
+                .aapt2
+                .compile_files_parallel(resource_files, compiled_dir)?;
             if !result.success {
                 anyhow::bail!("Compilation failed: {:?}", result.errors);
             }
@@ -412,17 +482,6 @@ impl SkinBuilder {
 
         // For incremental builds, check each file individually
         debug!("Found {} resource files", resource_files.len());
-
-        // Set number of parallel workers (note: this only works if not already initialized)
-        if let Some(workers) = self.config.parallel_workers {
-            if rayon::ThreadPoolBuilder::new()
-                .num_threads(workers)
-                .build_global()
-                .is_err()
-            {
-                debug!("Worker thread count already set, using existing pool");
-            }
-        }
 
         let cache = self.cache.as_mut().unwrap();
         let aapt2 = &self.aapt2;
@@ -457,7 +516,10 @@ impl SkinBuilder {
         };
 
         if !flat_files_results.success {
-            anyhow::bail!("Parallel compilation failed: {:?}", flat_files_results.errors);
+            anyhow::bail!(
+                "Parallel compilation failed: {:?}",
+                flat_files_results.errors
+            );
         }
 
         let mut flat_files = Vec::new();
@@ -489,7 +551,12 @@ impl SkinBuilder {
     }
 
     /// Compile a resource directory
-    fn compile_resource_dir(&mut self, res_dir: &Path, compiled_dir: &Path) -> Result<Vec<PathBuf>> {
+    #[allow(dead_code)]
+    fn compile_resource_dir(
+        &mut self,
+        res_dir: &Path,
+        compiled_dir: &Path,
+    ) -> Result<Vec<PathBuf>> {
         // If incremental build is disabled or no cache, compile the whole directory
         if self.cache.is_none() {
             // Clear compiled directory to avoid stale flat files
@@ -497,7 +564,7 @@ impl SkinBuilder {
                 std::fs::remove_dir_all(compiled_dir)?;
             }
             std::fs::create_dir_all(compiled_dir)?;
-            
+
             let result = self.aapt2.compile_dir(res_dir, compiled_dir)?;
             if !result.success {
                 anyhow::bail!("Compilation failed: {:?}", result.errors);
@@ -508,17 +575,6 @@ impl SkinBuilder {
         // For incremental builds, check each file individually
         let resource_files = self.find_resource_files(res_dir)?;
         debug!("Found {} resource files", resource_files.len());
-
-        // Set number of parallel workers (note: this only works if not already initialized)
-        if let Some(workers) = self.config.parallel_workers {
-            if rayon::ThreadPoolBuilder::new()
-                .num_threads(workers)
-                .build_global()
-                .is_err()
-            {
-                debug!("Worker thread count already set, using existing pool");
-            }
-        }
 
         let cache = self.cache.as_mut().unwrap();
         let aapt2 = &self.aapt2;
@@ -553,7 +609,10 @@ impl SkinBuilder {
         };
 
         if !flat_files_results.success {
-            anyhow::bail!("Parallel compilation failed: {:?}", flat_files_results.errors);
+            anyhow::bail!(
+                "Parallel compilation failed: {:?}",
+                flat_files_results.errors
+            );
         }
 
         let mut flat_files = Vec::new();
@@ -587,10 +646,12 @@ impl SkinBuilder {
     /// Find all resource files in a directory
     fn find_resource_files(&self, res_dir: &Path) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
-        
+
         // Canonicalize res_dir once for consistent path comparison
         // This handles relative paths, symlinks, and other path variations
-        let canonical_res_dir = res_dir.canonicalize().unwrap_or_else(|_| res_dir.to_path_buf());
+        let canonical_res_dir = res_dir
+            .canonicalize()
+            .unwrap_or_else(|_| res_dir.to_path_buf());
 
         for entry in WalkDir::new(res_dir)
             .into_iter()
@@ -598,23 +659,37 @@ impl SkinBuilder {
             .filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
-            
+
             // Skip files that are directly under resourceDir
             // Valid Android resources must be in subdirectories like res/values/, res/drawable/, etc.
             if let Some(parent) = path.parent() {
                 // Canonicalize parent for accurate comparison
-                let canonical_parent = parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf());
+                let canonical_parent = parent
+                    .canonicalize()
+                    .unwrap_or_else(|_| parent.to_path_buf());
                 if canonical_parent == canonical_res_dir {
                     // File is directly under resourceDir, skip it as it's invalid
-                    debug!("Skipping invalid resource file directly under resourceDir: {}", path.display());
+                    debug!(
+                        "Skipping invalid resource file directly under resourceDir: {}",
+                        path.display()
+                    );
                     continue;
                 }
             }
-            
+
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !name.starts_with('.') && name != "Thumbs.db" {
-                    files.push(path.to_path_buf());
+                // Skip hidden files, system files, and specific resource files
+                if name.starts_with('.') || name == "Thumbs.db" {
+                    continue;
                 }
+
+                // Filter out styles.xml, attrs.xml, and strings.xml
+                if name == "styles.xml" || name == "attrs.xml" || name == "strings.xml" {
+                    debug!("Filtering out resource file: {}", path.display());
+                    continue;
+                }
+
+                files.push(path.to_path_buf());
             }
         }
 
@@ -622,6 +697,7 @@ impl SkinBuilder {
     }
 
     /// Clean build artifacts
+    #[allow(dead_code)]
     pub fn clean(&self) -> Result<()> {
         let compiled_dir = self
             .config
@@ -660,21 +736,24 @@ mod tests {
         // Create a temporary directory structure
         let temp_dir = TempDir::new()?;
         let res_dir = temp_dir.path().join("res");
-        
+
         // Create valid resource structure (res/values/strings.xml)
         let values_dir = res_dir.join("values");
         fs::create_dir_all(&values_dir)?;
         let valid_file = values_dir.join("strings.xml");
-        fs::write(&valid_file, "<?xml version=\"1.0\"?><resources></resources>")?;
-        
+        fs::write(
+            &valid_file,
+            "<?xml version=\"1.0\"?><resources></resources>",
+        )?;
+
         // Create invalid resource (directly under res/)
         let invalid_file = res_dir.join("invalid.txt");
         fs::write(&invalid_file, "This should be ignored")?;
-        
+
         // Create another invalid resource (directly under res/)
         let another_invalid = res_dir.join("readme.md");
         fs::write(&another_invalid, "# README")?;
-        
+
         // Create config for testing
         let config = BuildConfig {
             resource_dir: res_dir.clone(),
@@ -692,20 +771,25 @@ mod tests {
             additional_resource_dirs: None,
             compiled_dir: None,
             stable_ids_file: None,
-            parallel_workers: None,
             package_id: None,
             precompiled_dependencies: None,
         };
-        
+
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
-        
+
         // Should only find the valid file, not the ones directly under res/
         assert_eq!(files.len(), 1, "Should only find 1 valid resource file");
         assert_eq!(files[0], valid_file, "Should find the strings.xml file");
-        assert!(!files.contains(&invalid_file), "Should not include invalid.txt");
-        assert!(!files.contains(&another_invalid), "Should not include readme.md");
-        
+        assert!(
+            !files.contains(&invalid_file),
+            "Should not include invalid.txt"
+        );
+        assert!(
+            !files.contains(&another_invalid),
+            "Should not include readme.md"
+        );
+
         Ok(())
     }
 
@@ -714,27 +798,27 @@ mod tests {
         // Create a temporary directory structure
         let temp_dir = TempDir::new()?;
         let res_dir = temp_dir.path().join("res");
-        
+
         // Create various valid resource subdirectories
         let values_dir = res_dir.join("values");
         let drawable_dir = res_dir.join("drawable");
         let layout_dir = res_dir.join("layout");
-        
+
         fs::create_dir_all(&values_dir)?;
         fs::create_dir_all(&drawable_dir)?;
         fs::create_dir_all(&layout_dir)?;
-        
+
         // Create valid resource files
         let strings_xml = values_dir.join("strings.xml");
         let colors_xml = values_dir.join("colors.xml");
         let icon_png = drawable_dir.join("icon.png");
         let activity_xml = layout_dir.join("activity_main.xml");
-        
+
         fs::write(&strings_xml, "<resources></resources>")?;
         fs::write(&colors_xml, "<resources></resources>")?;
         fs::write(&icon_png, "fake png data")?;
         fs::write(&activity_xml, "<LinearLayout></LinearLayout>")?;
-        
+
         // Create config for testing
         let config = BuildConfig {
             resource_dir: res_dir.clone(),
@@ -752,21 +836,23 @@ mod tests {
             additional_resource_dirs: None,
             compiled_dir: None,
             stable_ids_file: None,
-            parallel_workers: None,
             package_id: None,
             precompiled_dependencies: None,
         };
-        
+
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
-        
+
         // Should find all 4 valid files
         assert_eq!(files.len(), 4, "Should find all 4 valid resource files");
         assert!(files.contains(&strings_xml), "Should include strings.xml");
         assert!(files.contains(&colors_xml), "Should include colors.xml");
         assert!(files.contains(&icon_png), "Should include icon.png");
-        assert!(files.contains(&activity_xml), "Should include activity_main.xml");
-        
+        assert!(
+            files.contains(&activity_xml),
+            "Should include activity_main.xml"
+        );
+
         Ok(())
     }
 }

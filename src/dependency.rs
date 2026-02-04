@@ -313,7 +313,6 @@ mod tests {
             additional_resource_dirs,
             compiled_dir: None,
             stable_ids_file: None,
-            parallel_workers: None,
             package_id: None,
             precompiled_dependencies: None,
         }
@@ -584,7 +583,7 @@ mod tests {
             version_code: None,
             version_name: None,
             stable_ids_file: None,
-            parallel_workers: None,
+            max_parallel_builds: None,
             package_id: None,
             apps: vec![base_app, app_with_flavors],
         };
@@ -711,7 +710,7 @@ mod tests {
             version_code: None,
             version_name: None,
             stable_ids_file: None,
-            parallel_workers: None,
+            max_parallel_builds: None,
             package_id: None,
             apps: vec![app_a, app_b],
         };
