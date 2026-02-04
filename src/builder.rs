@@ -72,46 +72,25 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
     false
 }
 
-/// Inject package attribute into manifest if missing
-/// Returns the path to the processed manifest (either original or temp file)
-fn inject_package_if_needed(
-    manifest_path: &Path,
+/// Create a minimal AndroidManifest.xml as a temporary file
+/// According to requirements, we only need: <manifest package="[package_name]"/>
+/// This is sufficient for resource-only skin packages
+fn create_minimal_manifest(
     package_name: &str,
     output_dir: &Path,
 ) -> Result<PathBuf> {
-    let manifest_content = fs::read_to_string(manifest_path)?;
-
-    if manifest_content.contains("package=") {
-        // Manifest already has package attribute, use as-is
-        return Ok(manifest_path.to_path_buf());
-    }
-
-    warn!(
-        "AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"",
+    // Create minimal manifest content - only package name is required for resource compilation
+    let manifest_content = format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest package=\"{}\" />\n",
         package_name
     );
-
-    // Need to inject package attribute
-    let mut modified_content = manifest_content;
-
-    // Find the <manifest tag and inject the package attribute
-    if let Some(pos) = modified_content.find("<manifest") {
-        // Find the end of the opening tag
-        if let Some(end_pos) = modified_content[pos..].find('>') {
-            let end_index = pos + end_pos;
-
-            // Insert package attribute before the closing >
-            let insert_pos = end_index;
-            let package_attr = format!("\n    package=\"{}\"", package_name);
-            modified_content.insert_str(insert_pos, &package_attr);
-        }
-    }
 
     // Write to temporary file
     fs::create_dir_all(output_dir)?;
     let temp_manifest = output_dir.join(".temp_AndroidManifest.xml");
-    fs::write(&temp_manifest, modified_content)?;
+    fs::write(&temp_manifest, manifest_content)?;
 
+    debug!("Created minimal manifest at: {}", temp_manifest.display());
     Ok(temp_manifest)
 }
 
@@ -128,10 +107,12 @@ impl SkinBuilder {
         let aapt2 = Aapt2::new(config.aapt2_path.clone())?;
 
         let cache = if config.incremental.unwrap_or(false) {
-            let cache_dir = config
+            // Separate cache directory by package name for stable caching
+            let base_cache_dir = config
                 .cache_dir
                 .clone()
                 .unwrap_or_else(|| config.output_dir.join(".build-cache"));
+            let cache_dir = base_cache_dir.join(&config.package_name);
             let cache = BuildCache::new(cache_dir)?;
             cache.init()?;
             Some(cache)
@@ -367,9 +348,9 @@ impl SkinBuilder {
             cache.save()?;
         }
 
-        // Inject package attribute if missing (aapt2's --rename-manifest-package only renames, doesn't add)
-        let processed_manifest = inject_package_if_needed(
-            &self.config.manifest_path,
+        // Create minimal AndroidManifest.xml as temporary file
+        // According to requirements, we only need: <manifest package="[package_name]"/>
+        let processed_manifest = create_minimal_manifest(
             &self.config.package_name,
             &self.config.output_dir,
         )?;
@@ -408,10 +389,8 @@ impl SkinBuilder {
             min_sdk_version,
         )?;
 
-        // Cleanup temporary manifest if created
-        if processed_manifest != self.config.manifest_path {
-            fs::remove_file(&processed_manifest).ok();
-        }
+        // Always cleanup temporary manifest (we always create one now)
+        fs::remove_file(&processed_manifest).ok();
 
         // Cleanup AAR extraction directories
         if !aar_infos.is_empty() {
@@ -677,6 +656,22 @@ impl SkinBuilder {
                 }
             }
 
+            // Check if file is in a layout directory
+            let mut is_in_layout_dir = false;
+            if let Some(parent) = path.parent() {
+                if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+                    // Check for layout directories (layout, layout-land, layout-sw600dp, etc.)
+                    if parent_name.starts_with("layout") {
+                        debug!("Filtering out layout file: {}", path.display());
+                        is_in_layout_dir = true;
+                    }
+                }
+            }
+            
+            if is_in_layout_dir {
+                continue;
+            }
+
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 // Skip hidden files, system files, and specific resource files
                 if name.starts_with('.') || name == "Thumbs.db" {
@@ -737,12 +732,19 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let res_dir = temp_dir.path().join("res");
 
-        // Create valid resource structure (res/values/strings.xml)
+        // Create valid resource structure (res/values/colors.xml - not strings.xml which is filtered)
         let values_dir = res_dir.join("values");
         fs::create_dir_all(&values_dir)?;
-        let valid_file = values_dir.join("strings.xml");
+        let valid_file = values_dir.join("colors.xml");
         fs::write(
             &valid_file,
+            "<?xml version=\"1.0\"?><resources></resources>",
+        )?;
+
+        // Also test that strings.xml is filtered out
+        let strings_file = values_dir.join("strings.xml");
+        fs::write(
+            &strings_file,
             "<?xml version=\"1.0\"?><resources></resources>",
         )?;
 
@@ -778,9 +780,13 @@ mod tests {
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
 
-        // Should only find the valid file, not the ones directly under res/
-        assert_eq!(files.len(), 1, "Should only find 1 valid resource file");
-        assert_eq!(files[0], valid_file, "Should find the strings.xml file");
+        // Should only find the valid file (colors.xml), not strings.xml or files directly under res/
+        assert_eq!(files.len(), 1, "Should only find 1 valid resource file (colors.xml)");
+        assert_eq!(files[0], valid_file, "Should find the colors.xml file");
+        assert!(
+            !files.contains(&strings_file),
+            "Should not include strings.xml (filtered out)"
+        );
         assert!(
             !files.contains(&invalid_file),
             "Should not include invalid.txt"
@@ -809,6 +815,8 @@ mod tests {
         fs::create_dir_all(&layout_dir)?;
 
         // Create valid resource files
+        // Note: strings.xml, styles.xml, attrs.xml are filtered out
+        // Note: layout files are also filtered out
         let strings_xml = values_dir.join("strings.xml");
         let colors_xml = values_dir.join("colors.xml");
         let icon_png = drawable_dir.join("icon.png");
@@ -843,14 +851,15 @@ mod tests {
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
 
-        // Should find all 4 valid files
-        assert_eq!(files.len(), 4, "Should find all 4 valid resource files");
-        assert!(files.contains(&strings_xml), "Should include strings.xml");
+        // Should find only 2 files now: colors.xml and icon.png
+        // strings.xml is filtered, layout files are filtered
+        assert_eq!(files.len(), 2, "Should find 2 valid resource files (colors.xml and icon.png)");
+        assert!(!files.contains(&strings_xml), "Should NOT include strings.xml (filtered)");
         assert!(files.contains(&colors_xml), "Should include colors.xml");
         assert!(files.contains(&icon_png), "Should include icon.png");
         assert!(
-            files.contains(&activity_xml),
-            "Should include activity_main.xml"
+            !files.contains(&activity_xml),
+            "Should NOT include layout files (filtered)"
         );
 
         Ok(())

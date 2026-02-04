@@ -363,7 +363,209 @@ impl Aapt2 {
     }
 
     /// Link using command line arguments
+    /// Uses ZIP file for flat files when count exceeds threshold to avoid command line length limits
     fn link_with_command_line(
+        &self,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],
+        manifest_path: &Path,
+        android_jar: &Path,
+        output_apk: &Path,
+        package_name: Option<&str>,
+        version_code: Option<u32>,
+        version_name: Option<&str>,
+        stable_ids_file: Option<&Path>,
+        package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
+    ) -> Result<LinkResult> {
+        // Calculate total flat file count
+        let total_flat_files = base_flat_files.len() 
+            + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
+        
+        // Threshold for using ZIP (to avoid command line length issues)
+        // Windows has ~8191 char limit, Unix has ~131072, use conservative threshold
+        const USE_ZIP_THRESHOLD: usize = 100;
+        
+        let use_zip = total_flat_files > USE_ZIP_THRESHOLD;
+        
+        if use_zip {
+            debug!("Using ZIP file for {} flat files (exceeds threshold of {})", 
+                   total_flat_files, USE_ZIP_THRESHOLD);
+            self.link_with_zip(
+                base_flat_files,
+                overlay_flat_files,
+                manifest_path,
+                android_jar,
+                output_apk,
+                package_name,
+                version_code,
+                version_name,
+                stable_ids_file,
+                package_id,
+                min_sdk_version,
+            )
+        } else {
+            self.link_with_direct_args(
+                base_flat_files,
+                overlay_flat_files,
+                manifest_path,
+                android_jar,
+                output_apk,
+                package_name,
+                version_code,
+                version_name,
+                stable_ids_file,
+                package_id,
+                min_sdk_version,
+            )
+        }
+    }
+    
+    /// Link using ZIP file for flat files
+    fn link_with_zip(
+        &self,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],
+        manifest_path: &Path,
+        android_jar: &Path,
+        output_apk: &Path,
+        package_name: Option<&str>,
+        version_code: Option<u32>,
+        version_name: Option<&str>,
+        stable_ids_file: Option<&Path>,
+        package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
+    ) -> Result<LinkResult> {
+        use std::fs::File;
+        use zip::write::{FileOptions, ZipWriter};
+        
+        // Create temporary directory for ZIP files
+        let temp_dir = output_apk.parent().unwrap().join(".temp_zip");
+        std::fs::create_dir_all(&temp_dir)?;
+        
+        // Create ZIP file for base flat files
+        let base_zip = temp_dir.join("base_flats.zip");
+        let base_file = File::create(&base_zip)?;
+        let mut base_zip_writer = ZipWriter::new(base_file);
+        
+        for flat_file in base_flat_files {
+            let file_name = flat_file.file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| anyhow::anyhow!("Invalid flat file name"))?;
+            base_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
+            let content = std::fs::read(flat_file)?;
+            std::io::Write::write_all(&mut base_zip_writer, &content)?;
+        }
+        base_zip_writer.finish()?;
+        
+        // Create ZIP files for overlay flat files
+        let mut overlay_zips = Vec::new();
+        for (idx, overlay_set) in overlay_flat_files.iter().enumerate() {
+            if overlay_set.is_empty() {
+                continue;
+            }
+            
+            let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
+            let overlay_file = File::create(&overlay_zip)?;
+            let mut overlay_zip_writer = ZipWriter::new(overlay_file);
+            
+            for flat_file in overlay_set {
+                let file_name = flat_file.file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or_else(|| anyhow::anyhow!("Invalid flat file name"))?;
+                overlay_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
+                let content = std::fs::read(flat_file)?;
+                std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
+            }
+            overlay_zip_writer.finish()?;
+            overlay_zips.push(overlay_zip);
+        }
+        
+        // Build command with ZIP files
+        let mut cmd = Command::new(&self.aapt2_path);
+        cmd.arg("link")
+            .arg("--manifest")
+            .arg(manifest_path)
+            .arg("-I")
+            .arg(android_jar)
+            .arg("-o")
+            .arg(output_apk)
+            .arg("--auto-add-overlay")
+            .arg("--no-version-vectors")
+            .arg("--keep-raw-values")
+            .arg("--allow-reserved-package-id")
+            .arg("--no-resource-removal");
+
+        if let Some(pkg) = package_name {
+            cmd.arg("--rename-manifest-package").arg(pkg);
+            cmd.arg("--rename-resources-package").arg(pkg);
+        }
+
+        if let Some(code) = version_code {
+            cmd.arg("--version-code").arg(code.to_string());
+        }
+
+        if let Some(name) = version_name {
+            cmd.arg("--version-name").arg(name);
+        }
+
+        if let Some(min_sdk) = min_sdk_version {
+            cmd.arg("--min-sdk-version").arg(min_sdk.to_string());
+        }
+
+        if let Some(stable_ids) = stable_ids_file {
+            cmd.arg("--stable-ids").arg(stable_ids);
+            cmd.arg("--emit-ids").arg(stable_ids);
+        }
+
+        let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
+        cmd.arg("--package-id").arg(pkg_id);
+
+        // Add base ZIP file
+        cmd.arg(&base_zip);
+
+        // Add overlay ZIP files with -R flag
+        for overlay_zip in &overlay_zips {
+            cmd.arg("-R").arg(overlay_zip);
+        }
+
+        debug!("Executing aapt2 link with ZIP files: {:?}", cmd);
+
+        let output = cmd.output().with_context(|| {
+            format!(
+                "Failed to execute aapt2 link with ZIP files\n\
+                 aapt2 path: {}\n\
+                 Manifest: {}\n\
+                 Android JAR: {}\n\
+                 Output: {}",
+                self.aapt2_path.display(),
+                manifest_path.display(),
+                android_jar.display(),
+                output_apk.display()
+            )
+        })?;
+
+        // Cleanup temporary ZIP files
+        std::fs::remove_dir_all(&temp_dir).ok();
+
+        self.process_link_output(
+            output,
+            manifest_path,
+            android_jar,
+            output_apk,
+            package_name,
+            version_code,
+            version_name,
+            stable_ids_file,
+            package_id,
+            base_flat_files,
+            overlay_flat_files,
+            min_sdk_version,
+        )
+    }
+    
+    /// Link using direct command line arguments (original method)
+    fn link_with_direct_args(
         &self,
         base_flat_files: &[PathBuf],
         overlay_flat_files: &[Vec<PathBuf>],
