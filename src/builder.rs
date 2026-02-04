@@ -656,20 +656,15 @@ impl SkinBuilder {
                 }
             }
 
-            // Check if file is in a layout directory
-            let mut is_in_layout_dir = false;
+            // Check if file is in a layout directory and skip it
             if let Some(parent) = path.parent() {
                 if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
                     // Check for layout directories (layout, layout-land, layout-sw600dp, etc.)
                     if parent_name.starts_with("layout") {
                         debug!("Filtering out layout file: {}", path.display());
-                        is_in_layout_dir = true;
+                        continue;
                     }
                 }
-            }
-            
-            if is_in_layout_dir {
-                continue;
             }
 
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
