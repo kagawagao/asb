@@ -423,6 +423,17 @@ ASB 使用 aapt2 的 `-R` 标志实现资源覆盖语义：
 
 参见 `examples/resource-priority-test/` 目录，展示了资源优先级的完整用法。
 
+## Examples / 示例
+
+ASB 提供了多个示例项目来演示不同的使用场景和功能。详见 [examples/](examples/) 目录：
+
+- **simple-skin** - 基础皮肤包示例
+- **multi-theme** - 多主题支持（日/夜模式）
+- **android-skin-loader-test** - 完整的 Android 应用示例，演示如何动态加载皮肤包
+- **array-config** / **array-config-deps** - 多应用配置示例
+- **resource-priority-test** - 资源优先级测试
+- 更多示例请查看 [examples/README.md](examples/README.md)
+
 ## Use Cases / 使用场景
 
 ### 1. 应用皮肤/主题热更新
@@ -463,14 +474,17 @@ asb build --config multi-layer-theme.json
 
 ```
 asb (Rust)
-├── aapt2.rs       - aapt2 wrapper with parallel support
-├── aar.rs         - AAR extraction
-├── cache.rs       - Incremental build cache (SHA-256)
-├── builder.rs     - Main build orchestration
-├── merge.rs       - Internal merging utilities
-├── cli.rs         - Command-line interface
-├── types.rs       - Type definitions
-└── main.rs        - Entry point
+├── aapt2.rs            - aapt2 wrapper with parallel support
+├── aar.rs              - AAR extraction
+├── cache.rs            - Incremental build cache (SHA-256)
+├── builder.rs          - Main build orchestration
+├── dependency.rs       - Multi-app dependency resolution
+├── resource_priority.rs - Resource priority handling
+├── merge.rs            - Internal merging utilities
+├── cli.rs              - Command-line interface
+├── types.rs            - Type definitions
+├── lib.rs              - Library interface
+└── main.rs             - Entry point
 ```
 
 ### 关键技术
@@ -541,7 +555,7 @@ MIT © Jingsong Gao
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. For more details on development setup and guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links
 
