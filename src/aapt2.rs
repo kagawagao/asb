@@ -459,9 +459,23 @@ impl Aapt2 {
         let mut base_zip_writer = ZipWriter::new(base_file);
         
         for flat_file in base_flat_files {
-            let file_name = flat_file.file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| anyhow::anyhow!("Invalid flat file name"))?;
+            // Use full path relative to compiled dir to avoid duplicate filenames
+            // e.g., "main/drawable_icon.flat" instead of just "drawable_icon.flat"
+            let file_name = if let Some(compiled) = compiled_dir {
+                flat_file.strip_prefix(compiled)
+                    .ok()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or_else(|| {
+                        flat_file.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown.flat")
+                    })
+            } else {
+                flat_file.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown.flat")
+            };
+            
             base_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
             let content = std::fs::read(flat_file)?;
             std::io::Write::write_all(&mut base_zip_writer, &content)?;
@@ -480,9 +494,22 @@ impl Aapt2 {
             let mut overlay_zip_writer = ZipWriter::new(overlay_file);
             
             for flat_file in overlay_set {
-                let file_name = flat_file.file_name()
-                    .and_then(|n| n.to_str())
-                    .ok_or_else(|| anyhow::anyhow!("Invalid flat file name"))?;
+                // Use full path relative to compiled dir to avoid duplicate filenames
+                let file_name = if let Some(compiled) = compiled_dir {
+                    flat_file.strip_prefix(compiled)
+                        .ok()
+                        .and_then(|p| p.to_str())
+                        .unwrap_or_else(|| {
+                            flat_file.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("unknown.flat")
+                        })
+                } else {
+                    flat_file.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown.flat")
+                };
+                
                 overlay_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
                 let content = std::fs::read(flat_file)?;
                 std::io::Write::write_all(&mut overlay_zip_writer, &content)?;

@@ -85,9 +85,10 @@ fn create_minimal_manifest(
         package_name
     );
 
-    // Write to temporary file
+    // Write to temporary file - use package name to avoid conflicts in multi-task builds
     fs::create_dir_all(output_dir)?;
-    let temp_manifest = output_dir.join(".temp_AndroidManifest.xml");
+    let temp_manifest = output_dir.join(format!(".temp_AndroidManifest_{}.xml", 
+        package_name.replace('.', "_")));
     fs::write(&temp_manifest, manifest_content)?;
 
     debug!("Created minimal manifest at: {}", temp_manifest.display());
