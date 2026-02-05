@@ -231,7 +231,24 @@ impl SkinBuilder {
         let mut flat_files_by_priority: Vec<(ResourcePriority, Vec<PathBuf>, PathBuf)> = Vec::new();
 
         for (res_dir, priority, dir_name) in &resource_dirs_with_priority {
-            if res_dir.exists() {
+            // Check if this resource directory has precompiled flat files
+            let precompiled_flat_files = self.config.precompiled_dependencies
+                .as_ref()
+                .and_then(|map| map.get(res_dir))
+                .cloned();
+
+            if let Some(flat_files) = precompiled_flat_files {
+                // Use precompiled flat files
+                info!(
+                    "Using {} precompiled flat files for {} (priority {:?})",
+                    flat_files.len(),
+                    res_dir.display(),
+                    priority
+                );
+                
+                flat_files_by_priority.push((*priority, flat_files, res_dir.clone()));
+                valid_resource_dirs.push(res_dir.clone());
+            } else if res_dir.exists() {
                 // Compile each resource directory to its own subdirectory
                 let module_compiled_dir = compiled_dir.join(dir_name);
                 std::fs::create_dir_all(&module_compiled_dir)?;
