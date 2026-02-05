@@ -499,25 +499,56 @@ impl Aapt2 {
             let base_file = File::create(&base_zip)?;
             let mut base_zip_writer = ZipWriter::new(base_file);
             
+            // Track used filenames to detect duplicates
+            let mut used_names = std::collections::HashSet::new();
+            
             for flat_file in base_flat_files {
-                // Use full path relative to compiled dir to avoid duplicate filenames
-                // e.g., "main/drawable_icon.flat" instead of just "drawable_icon.flat"
-                let file_name = if let Some(compiled) = compiled_dir {
+                // Try to create a unique name for this file
+                // Strategy 1: Use relative path from compiled_dir if possible
+                let mut file_name = if let Some(compiled) = compiled_dir {
                     flat_file.strip_prefix(compiled)
                         .ok()
                         .and_then(|p| p.to_str())
-                        .unwrap_or_else(|| {
-                            flat_file.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown.flat")
-                        })
+                        .map(|s| s.to_string())
                 } else {
+                    None
+                };
+                
+                // Strategy 2: If that didn't work, try using parent directory + filename
+                if file_name.is_none() {
+                    if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name()) {
+                        if let (Some(parent_name), Some(file_name_str)) = (parent.file_name(), name.to_str()) {
+                            if let Some(parent_str) = parent_name.to_str() {
+                                file_name = Some(format!("{}/{}", parent_str, file_name_str));
+                            }
+                        }
+                    }
+                }
+                
+                // Strategy 3: Fallback to just filename
+                let mut final_name = file_name.unwrap_or_else(|| {
                     flat_file.file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown.flat")
-                };
+                        .to_string()
+                });
                 
-                base_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
+                // Ensure uniqueness by appending counter if needed
+                let base_name = final_name.clone();
+                let mut counter = 1;
+                while used_names.contains(&final_name) {
+                    // Extract extension if present
+                    if let Some(pos) = base_name.rfind('.') {
+                        let (name_part, ext_part) = base_name.split_at(pos);
+                        final_name = format!("{}_{}{}", name_part, counter, ext_part);
+                    } else {
+                        final_name = format!("{}_{}", base_name, counter);
+                    }
+                    counter += 1;
+                }
+                used_names.insert(final_name.clone());
+                
+                base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
                 let content = std::fs::read(flat_file)?;
                 std::io::Write::write_all(&mut base_zip_writer, &content)?;
             }
@@ -540,24 +571,56 @@ impl Aapt2 {
                 let overlay_file = File::create(&overlay_zip)?;
                 let mut overlay_zip_writer = ZipWriter::new(overlay_file);
                 
+                // Track used filenames to detect duplicates
+                let mut used_names = std::collections::HashSet::new();
+                
                 for flat_file in overlay_set {
-                    // Use full path relative to compiled dir to avoid duplicate filenames
-                    let file_name = if let Some(compiled) = compiled_dir {
+                    // Try to create a unique name for this file
+                    // Strategy 1: Use relative path from compiled_dir if possible
+                    let mut file_name = if let Some(compiled) = compiled_dir {
                         flat_file.strip_prefix(compiled)
                             .ok()
                             .and_then(|p| p.to_str())
-                            .unwrap_or_else(|| {
-                                flat_file.file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("unknown.flat")
-                            })
+                            .map(|s| s.to_string())
                     } else {
+                        None
+                    };
+                    
+                    // Strategy 2: If that didn't work, try using parent directory + filename
+                    if file_name.is_none() {
+                        if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name()) {
+                            if let (Some(parent_name), Some(file_name_str)) = (parent.file_name(), name.to_str()) {
+                                if let Some(parent_str) = parent_name.to_str() {
+                                    file_name = Some(format!("{}/{}", parent_str, file_name_str));
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Strategy 3: Fallback to just filename
+                    let mut final_name = file_name.unwrap_or_else(|| {
                         flat_file.file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown.flat")
-                    };
+                            .to_string()
+                    });
                     
-                    overlay_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
+                    // Ensure uniqueness by appending counter if needed
+                    let base_name = final_name.clone();
+                    let mut counter = 1;
+                    while used_names.contains(&final_name) {
+                        // Extract extension if present
+                        if let Some(pos) = base_name.rfind('.') {
+                            let (name_part, ext_part) = base_name.split_at(pos);
+                            final_name = format!("{}_{}{}", name_part, counter, ext_part);
+                        } else {
+                            final_name = format!("{}_{}", base_name, counter);
+                        }
+                        counter += 1;
+                    }
+                    used_names.insert(final_name.clone());
+                    
+                    overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
                     let content = std::fs::read(flat_file)?;
                     std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
                 }
