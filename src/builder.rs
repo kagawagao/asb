@@ -175,10 +175,10 @@ impl SkinBuilder {
         }
 
         // Collect all resource directories with their priorities
-        // Following Android standard priority: Library (AAR) < Main < Additional (Flavors/BuildTypes)
+        // Following Android standard priority: Library (AAR) < Additional < Main
         let mut resource_dirs_with_priority: Vec<(PathBuf, ResourcePriority, String)> = Vec::new();
         
-        // Main resource directory (medium priority)
+        // Main resource directory (highest priority)
         resource_dirs_with_priority.push((
             self.config.resource_dir.clone(), 
             ResourcePriority::Main,
@@ -197,7 +197,7 @@ impl SkinBuilder {
             }
         }
 
-        // Add additional resource directories (highest priority)
+        // Add additional resource directories (medium priority)
         if let Some(additional_dirs) = &self.config.additional_resource_dirs {
             for (idx, dir) in additional_dirs.iter().enumerate() {
                 // Create directory name from path: "additional/a/res" -> "additional_a_res"
@@ -260,13 +260,10 @@ impl SkinBuilder {
         flat_files_by_priority.sort_by_key(|(priority, _, _)| priority.value());
 
         // Separate base from overlays for aapt2 link
-        // Following Android standard: Library (AAR) < Main < Additional (Flavors/BuildTypes)
+        // Following Android standard: Library (AAR) < Additional < Main
+        // Library and Additional are base resources, Main is overlay
         let mut base_flat_files = Vec::new();
         let mut overlay_flat_files: Vec<Vec<PathBuf>> = Vec::new();
-
-        let has_library = flat_files_by_priority
-            .iter()
-            .any(|(p, _, _)| matches!(p, ResourcePriority::Library(_)));
 
         for (priority, files, dir) in &flat_files_by_priority {
             match priority {
@@ -280,31 +277,20 @@ impl SkinBuilder {
                     );
                     base_flat_files.extend(files.clone());
                 }
-                ResourcePriority::Main => {
-                    if has_library {
-                        // If we have libraries, Main is an overlay
-                        debug!(
-                            "Overlay resources (Main): {} files from {} (priority {:?})",
-                            files.len(),
-                            dir.display(),
-                            priority
-                        );
-                        overlay_flat_files.push(files.clone());
-                    } else {
-                        // If no libraries, Main is the base
-                        debug!(
-                            "Base resources (Main): {} files from {} (priority {:?})",
-                            files.len(),
-                            dir.display(),
-                            priority
-                        );
-                        base_flat_files.extend(files.clone());
-                    }
-                }
                 ResourcePriority::Additional(_) => {
-                    // Additional resources (flavors/build types) are always overlays
+                    // Additional resources are base (medium priority)
                     debug!(
-                        "Overlay resources (Additional): {} files from {} (priority {:?})",
+                        "Base resources (Additional): {} files from {} (priority {:?})",
+                        files.len(),
+                        dir.display(),
+                        priority
+                    );
+                    base_flat_files.extend(files.clone());
+                }
+                ResourcePriority::Main => {
+                    // Main resources are overlay (highest priority)
+                    debug!(
+                        "Overlay resources (Main): {} files from {} (priority {:?})",
                         files.len(),
                         dir.display(),
                         priority
