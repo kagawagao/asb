@@ -323,11 +323,12 @@ impl Cli {
         // For array mode with multiple configs, ensure each config has a unique compiled directory
         // to avoid conflicts when building multiple packages from the same output directory
         if build_configs.len() > 1 {
-            for (idx, build_config) in build_configs.iter_mut().enumerate() {
+            for build_config in build_configs.iter_mut() {
                 // Only set if not explicitly configured
+                // Use package name as compiled directory for stable, identifiable output
                 if build_config.compiled_dir.is_none() {
                     let unique_compiled_dir =
-                        build_config.output_dir.join(format!("compiled_{}", idx));
+                        build_config.output_dir.join(&build_config.package_name);
                     build_config.compiled_dir = Some(unique_compiled_dir);
                 }
 
