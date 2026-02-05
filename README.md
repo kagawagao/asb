@@ -45,26 +45,11 @@ sudo cp target/release/asb /usr/local/bin/
 
 ## Quick Start / 快速开始
 
-### Option 1: 使用默认配置（推荐）
+### Option 1: 使用配置文件（推荐）
 
-ASB 内置了基于标准 Android 项目结构的默认配置，无需配置文件即可直接使用：
+#### 单应用配置
 
-```bash
-# 在标准 Android 项目目录中直接运行
-asb build
-```
-
-默认配置使用以下标准路径：
-
-- 资源目录: `./src/main/res`
-- Manifest: `./src/main/AndroidManifest.xml`
-- 输出目录: `./build/outputs/skin`
-
-### Option 2: 使用配置文件
-
-#### 方法 A: 当前目录下的 asb.config.json（自动加载）
-
-在项目根目录创建 `asb.config.json`，运行 `asb build` 时会自动使用：
+在项目根目录创建 `asb.config.json`：
 
 ```bash
 # 生成默认配置文件
@@ -74,28 +59,82 @@ asb init
 asb build
 ```
 
-生成的配置文件示例（基于标准 Android 结构）：
+**简单配置示例**（使用 baseDir 自动推导路径）：
 
 ```json
 {
-  "resourceDir": "./src/main/res",
-  "manifestPath": "./src/main/AndroidManifest.xml",
-  "outputDir": "./build/outputs/skin",
+  "resourceDir": "./res",
+  "manifestPath": "./AndroidManifest.xml",
+  "outputDir": "./build",
   "packageName": "com.example.skin",
-  "androidJar": "${ANDROID_HOME}/platforms/android-30/android.jar",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
   "versionCode": 1,
   "versionName": "1.0.0"
 }
 ```
 
-#### 方法 B: 指定配置文件路径
+**注意**：ASB 会自动生成最小化的 AndroidManifest.xml，因此 `manifestPath` 可以省略。
 
-```bash
-asb build --config custom-config.json
+#### 多应用配置
+
+支持在一个配置文件中构建多个应用的皮肤包：
+
+```json
+{
+  "baseDir": "./",
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apps": [
+    {
+      "baseDir": "./app1",
+      "packageName": "com.example.skin.app1"
+    },
+    {
+      "baseDir": "./app2",
+      "packageName": "com.example.skin.app2"
+    }
+  ]
+}
 ```
 
-### Option 3: 命令行参数（最高优先级）
+**优势**：
+- 公共配置只需定义一次
+- 自动并行构建独立的应用
+- 支持依赖关系的顺序构建
+
+#### Flavors 配置（产品变体）
+
+支持为同一应用构建多个变体（如 free/pro，debug/release）：
+
+```json
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "apps": [
+    {
+      "baseDir": "./",
+      "packageName": "com.example.skin.myapp",
+      "flavors": [
+        {
+          "name": "free",
+          "outputFile": "myapp-free.skin"
+        },
+        {
+          "name": "pro",
+          "outputFile": "myapp-pro.skin",
+          "versionCode": 2
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Option 2: 命令行参数
 
 命令行参数会覆盖配置文件中的设置：
 
@@ -105,9 +144,16 @@ asb build \
   --manifest ./AndroidManifest.xml \
   --output ./build \
   --package com.example.skin \
-  --android-jar $ANDROID_HOME/platforms/android-30/android.jar \
+  --android-jar $ANDROID_HOME/platforms/android-34/android.jar \
   --incremental \
-  --workers 8
+  --package-id 0x7f
+```
+
+**多应用配置的过滤**：
+
+```bash
+# 只构建特定包名的应用
+asb build --config asb.config.json --packages com.example.skin.app1,com.example.skin.app2
 ```
 
 ### 配置优先级
@@ -117,51 +163,41 @@ ASB 按以下优先级加载配置：
 1. **命令行参数**（最高优先级）- 覆盖所有其他配置
 2. **--config 指定的文件** - 显式指定的配置文件
 3. **./asb.config.json** - 当前目录的配置文件（自动检测）
-4. **内置默认配置**（最低优先级）- 基于标准 Android 项目结构
 
-### 准备资源文件
+### 项目结构
 
-标准 Android 项目结构（推荐）：
+**标准 Android 项目结构**（推荐，使用 baseDir）：
 
 ```
 project/
-├── src/
-│   └── main/
-│       ├── res/
-│       │   ├── values/
-│       │   │   └── colors.xml
-│       │   ├── drawable/
-│       │   │   └── icon.png
-│       │   └── layout/
-│       │       └── activity_main.xml
-│       └── AndroidManifest.xml
-└── asb.config.json (可选)
+├── app1/
+│   ├── res/
+│   │   ├── values/
+│   │   │   └── colors.xml
+│   │   └── drawable/
+│   │       └── icon.png
+│   └── AndroidManifest.xml (可选)
+├── app2/
+│   └── res/
+│       └── values/
+│           └── colors.xml
+└── asb.config.json
 ```
 
-或传统结构：
+**传统单应用结构**：
 
 ```
 project/
 ├── res/
 │   ├── values/
 │   │   └── colors.xml
-│   ├── drawable/
-│   │   └── icon.png
-│   └── layout/
-│       └── activity_main.xml
-├── AndroidManifest.xml
-└── asb.config.json (可选)
+│   └── drawable/
+│       └── icon.png
+├── AndroidManifest.xml (可选)
+└── asb.config.json
 ```
 
-最小化的 `AndroidManifest.xml`:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.skin">
-    <application />
-</manifest>
-```
+**注意**：从 ASB 2.0 开始，AndroidManifest.xml 可以省略，工具会自动生成最小化的 manifest 文件。
 
 ## Usage / 使用方法
 
@@ -175,7 +211,7 @@ project/
 
 - `-c, --config <path>` - 配置文件路径（可选，默认查找 ./asb.config.json）
 - `-r, --resource-dir <path>` - 资源目录路径（覆盖配置文件）
-- `-m, --manifest <path>` - AndroidManifest.xml 路径（覆盖配置文件）
+- `-m, --manifest <path>` - AndroidManifest.xml 路径（可选，会自动生成）
 - `-o, --output <path>` - 输出目录（覆盖配置文件）
 - `-p, --package <name>` - 包名（覆盖配置文件）
 - `-a, --android-jar <path>` - android.jar 路径（覆盖配置文件）
@@ -185,19 +221,20 @@ project/
 - `--version-code <number>` - 版本号
 - `--version-name <string>` - 版本名称
 - `--stable-ids <path>` - stable IDs 文件路径
-- `--workers <number>` - 并行工作线程数（默认为 CPU 核心数）
 - `--package-id <id>` - 资源包 ID（如 "0x7f"），用于动态资源加载
+- `--max-parallel-builds <number>` - 多应用配置的最大并行构建数（默认为 CPU 核心数）
+- `--packages <names...>` - 过滤要构建的包名（逗号分隔），仅构建匹配的配置
 
 **说明:**
 
 - 所有参数都是可选的
 - 如果不提供 `--config`，工具会自动查找当前目录的 `./asb.config.json`
-- 如果没有找到配置文件，会使用内置的默认配置（基于标准 Android 项目结构）
 - 命令行参数始终优先于配置文件中的设置
+- AndroidManifest.xml 可以省略，会自动生成最小化的 manifest
 
 **Examples:**
 
-最简单的使用方式（标准 Android 项目）：
+最简单的使用方式（有配置文件）：
 
 ```bash
 asb build
@@ -209,10 +246,16 @@ asb build
 asb build --config custom-config.json
 ```
 
-并行编译（8 个工作线程）：
+只构建特定包名的应用（多应用配置）：
 
 ```bash
-asb build --config asb.config.json --workers 8
+asb build --config asb.config.json --packages com.example.skin.app1
+```
+
+控制并行构建数：
+
+```bash
+asb build --config asb.config.json --max-parallel-builds 4
 ```
 
 使用 stable IDs 保持资源 ID 稳定：
@@ -228,6 +271,18 @@ asb build \
   --config asb.config.json \
   --aar ./libs/library1.aar \
   --aar ./libs/library2.aar
+```
+
+完全使用命令行参数：
+
+```bash
+asb build \
+  --resource-dir ./res \
+  --output ./build \
+  --package com.example.skin \
+  --android-jar $ANDROID_HOME/platforms/android-34/android.jar \
+  --incremental \
+  --package-id 0x7f
 ```
 
 #### `asb clean`
@@ -262,7 +317,11 @@ asb init --dir ./my-skin-project
 
 ### Configuration File / 配置文件
 
-完整的配置文件示例：
+ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
+
+#### 单应用配置（Single App）
+
+适用于构建单个应用的皮肤包：
 
 ```json
 {
@@ -270,47 +329,163 @@ asb init --dir ./my-skin-project
   "manifestPath": "./AndroidManifest.xml",
   "outputDir": "./build",
   "packageName": "com.example.skin",
-  "androidJar": "/path/to/android.jar",
-  "aarFiles": ["./libs/library1.aar", "./libs/library2.aar"],
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "aarFiles": ["./libs/library1.aar"],
   "aapt2Path": "/path/to/aapt2",
   "incremental": true,
   "cacheDir": "./build/.cache",
   "versionCode": 1,
   "versionName": "1.0.0",
   "additionalResourceDirs": ["./extra-res"],
-  "compiledDir": "./build/compiled",
   "stableIdsFile": "./stable-ids.txt",
   "packageId": "0x7f"
 }
 ```
 
+#### 多应用配置（Multi-App）
+
+适用于在一个配置文件中构建多个应用的皮肤包，公共配置在顶层定义：
+
+```json
+{
+  "baseDir": "./",
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "incremental": true,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "maxParallelBuilds": 4,
+  "packageId": "0x7f",
+  "apps": [
+    {
+      "baseDir": "./app1",
+      "packageName": "com.example.skin.app1",
+      "outputFile": "app1.skin"
+    },
+    {
+      "baseDir": "./app2",
+      "packageName": "com.example.skin.app2",
+      "additionalResourceDirs": ["./app1/res"],
+      "outputFile": "app2.skin"
+    }
+  ]
+}
+```
+
+#### Flavors 配置（产品变体）
+
+支持为同一应用构建多个变体（如 free/pro，debug/release）：
+
+```json
+{
+  "outputDir": "./build",
+  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
+  "apps": [
+    {
+      "baseDir": "./",
+      "packageName": "com.example.skin.myapp",
+      "flavors": [
+        {
+          "name": "free",
+          "outputFile": "myapp-free.skin",
+          "additionalResourceDirs": ["./flavors/free/res"]
+        },
+        {
+          "name": "pro",
+          "outputFile": "myapp-pro.skin",
+          "additionalResourceDirs": ["./flavors/pro/res"],
+          "versionCode": 2
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### Configuration Options / 配置选项
+
+#### 单应用配置选项
 
 | Option                   | Type     | Required | Description                                             |
 | ------------------------ | -------- | -------- | ------------------------------------------------------- |
-| `resourceDir`            | string   | Yes      | 资源目录路径                                            |
-| `manifestPath`           | string   | Yes      | AndroidManifest.xml 路径                                |
+| `resourceDir`            | string   | Yes*     | 资源目录路径（使用 baseDir 时可选）                      |
+| `manifestPath`           | string   | No       | AndroidManifest.xml 路径（可省略，自动生成）              |
 | `outputDir`              | string   | Yes      | 输出目录                                                |
 | `packageName`            | string   | Yes      | 包名                                                    |
-| `androidJar`             | string   | Yes      | android.jar 路径                                        |
+| `androidJar`             | string   | Yes      | android.jar 路径，支持 `${ANDROID_HOME}` 环境变量        |
+| `baseDir`                | string   | No       | 基础目录，自动推导 resourceDir 和 manifestPath           |
 | `aarFiles`               | string[] | No       | AAR 文件列表                                            |
 | `aapt2Path`              | string   | No       | aapt2 路径（自动检测）                                  |
 | `incremental`            | boolean  | No       | 启用增量构建（默认 false）                              |
 | `cacheDir`               | string   | No       | 缓存目录（默认 outputDir/.build-cache）                 |
 | `versionCode`            | number   | No       | 版本号                                                  |
 | `versionName`            | string   | No       | 版本名称                                                |
-| `additionalResourceDirs` | string[] | No       | 额外的资源目录                                          |
-| `compiledDir`            | string   | No       | 编译产物目录（默认 outputDir/compiled）                 |
+| `additionalResourceDirs` | string[] | No       | 额外的资源目录（用于资源覆盖）                           |
 | `stableIdsFile`          | string   | No       | stable IDs 文件路径，用于保持资源 ID 稳定               |
 | `packageId`              | string   | No       | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"） |
+| `outputFile`             | string   | No       | 自定义输出文件名（默认为 `{packageName}.skin`）          |
 
-#### 多应用配置
+#### 多应用配置选项
 
-对于多应用配置（MultiAppConfig），支持以下额外字段：
+**顶层公共配置**：
 
-| Option              | Type   | Required | Description                         |
-| ------------------- | ------ | -------- | ----------------------------------- |
-| `maxParallelBuilds` | number | No       | 最大并行构建数（默认为 CPU 核心数） |
+| Option              | Type     | Required | Description                                    |
+| ------------------- | -------- | -------- | ---------------------------------------------- |
+| `apps`              | array    | Yes      | 应用配置数组                                   |
+| `outputDir`         | string   | Yes      | 公共输出目录                                   |
+| `androidJar`        | string   | Yes      | 公共 android.jar 路径                          |
+| `baseDir`           | string   | No       | 公共基础目录                                   |
+| `incremental`       | boolean  | No       | 公共增量构建设置                               |
+| `versionCode`       | number   | No       | 公共版本号（可被应用级配置覆盖）               |
+| `versionName`       | string   | No       | 公共版本名称（可被应用级配置覆盖）             |
+| `packageId`         | string   | No       | 公共资源包 ID（可被应用级配置覆盖）            |
+| `maxParallelBuilds` | number   | No       | 最大并行构建数（默认为 CPU 核心数）            |
+| `aarFiles`          | string[] | No       | 公共 AAR 文件列表                              |
+| `aapt2Path`         | string   | No       | 公共 aapt2 路径                                |
+| `cacheDir`          | string   | No       | 公共缓存目录                                   |
+| `stableIdsFile`     | string   | No       | 公共 stable IDs 文件                           |
+
+**应用级配置（apps 数组中的每个项）**：
+
+| Option                   | Type     | Required | Description                                |
+| ------------------------ | -------- | -------- | ------------------------------------------ |
+| `packageName`            | string   | Yes      | 应用包名                                   |
+| `baseDir`                | string   | No       | 应用特定基础目录                           |
+| `resourceDir`            | string   | No       | 应用特定资源目录                           |
+| `manifestPath`           | string   | No       | 应用特定 manifest 路径                     |
+| `outputDir`              | string   | No       | 应用特定输出目录（覆盖公共配置）           |
+| `outputFile`             | string   | No       | 应用特定输出文件名                         |
+| `additionalResourceDirs` | string[] | No       | 应用特定额外资源目录                       |
+| `versionCode`            | number   | No       | 应用特定版本号（覆盖公共配置）             |
+| `versionName`            | string   | No       | 应用特定版本名称（覆盖公共配置）           |
+| `packageId`              | string   | No       | 应用特定资源包 ID（覆盖公共配置）          |
+| `flavors`                | array    | No       | 应用的产品变体配置数组                     |
+
+**Flavor 配置选项**：
+
+| Option                   | Type     | Required | Description                        |
+| ------------------------ | -------- | -------- | ---------------------------------- |
+| `name`                   | string   | Yes      | Flavor 名称                        |
+| `outputFile`             | string   | No       | Flavor 特定输出文件名              |
+| `additionalResourceDirs` | string[] | No       | Flavor 特定额外资源目录            |
+| `versionCode`            | number   | No       | Flavor 特定版本号                  |
+| `versionName`            | string   | No       | Flavor 特定版本名称                |
+| `packageId`              | string   | No       | Flavor 特定资源包 ID               |
+
+### 配置说明
+
+**baseDir 自动推导**：
+- 当指定 `baseDir` 时，如果未指定 `resourceDir`，则默认为 `{baseDir}/res`
+- 当指定 `baseDir` 时，如果未指定 `manifestPath`，则默认为 `{baseDir}/AndroidManifest.xml`
+- 这简化了标准 Android 项目结构的配置
+
+**manifestPath 可选**：
+- 从 ASB 2.0 开始，AndroidManifest.xml 可以省略
+- 工具会自动生成最小化的 manifest：`<manifest package="{packageName}" />`
+
+**环境变量支持**：
+- 配置文件中的路径支持环境变量展开，如 `${ANDROID_HOME}`
+- 示例：`"androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar"`
 
 ## Performance / 性能特性
 
@@ -423,6 +598,17 @@ ASB 使用 aapt2 的 `-R` 标志实现资源覆盖语义：
 
 参见 `examples/resource-priority-test/` 目录，展示了资源优先级的完整用法。
 
+## Examples / 示例
+
+ASB 提供了多个示例项目来演示不同的使用场景和功能。详见 [examples/](examples/) 目录：
+
+- **simple-skin** - 基础皮肤包示例
+- **multi-theme** - 多主题支持（日/夜模式）
+- **android-skin-loader-test** - 完整的 Android 应用示例，演示如何动态加载皮肤包
+- **array-config** / **array-config-deps** - 多应用配置示例
+- **resource-priority-test** - 资源优先级测试
+- 更多示例请查看 [examples/README.md](examples/README.md)
+
 ## Use Cases / 使用场景
 
 ### 1. 应用皮肤/主题热更新
@@ -463,14 +649,17 @@ asb build --config multi-layer-theme.json
 
 ```
 asb (Rust)
-├── aapt2.rs       - aapt2 wrapper with parallel support
-├── aar.rs         - AAR extraction
-├── cache.rs       - Incremental build cache (SHA-256)
-├── builder.rs     - Main build orchestration
-├── merge.rs       - Internal merging utilities
-├── cli.rs         - Command-line interface
-├── types.rs       - Type definitions
-└── main.rs        - Entry point
+├── aapt2.rs            - aapt2 wrapper with parallel support
+├── aar.rs              - AAR extraction
+├── cache.rs            - Incremental build cache (SHA-256)
+├── builder.rs          - Main build orchestration
+├── dependency.rs       - Multi-app dependency resolution
+├── resource_priority.rs - Resource priority handling
+├── merge.rs            - Internal merging utilities
+├── cli.rs              - Command-line interface
+├── types.rs            - Type definitions
+├── lib.rs              - Library interface
+└── main.rs             - Entry point
 ```
 
 ### 关键技术
@@ -541,7 +730,7 @@ MIT © Jingsong Gao
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. For more details on development setup and guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links
 
