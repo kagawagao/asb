@@ -176,33 +176,51 @@ impl SkinBuilder {
 
         // Collect all resource directories with their priorities
         // Following Android standard priority: Library (AAR) < Main < Additional (Flavors/BuildTypes)
-        let mut resource_dirs_with_priority: Vec<(PathBuf, ResourcePriority)> = Vec::new();
+        let mut resource_dirs_with_priority: Vec<(PathBuf, ResourcePriority, String)> = Vec::new();
         
         // Main resource directory (medium priority)
-        resource_dirs_with_priority.push((self.config.resource_dir.clone(), ResourcePriority::Main));
+        resource_dirs_with_priority.push((
+            self.config.resource_dir.clone(), 
+            ResourcePriority::Main,
+            "main".to_string()
+        ));
 
         // Add AAR resource directories (lowest priority)
         for (idx, aar_info) in aar_infos.iter().enumerate() {
             if let Some(res_dir) = &aar_info.resource_dir {
-                resource_dirs_with_priority.push((res_dir.clone(), ResourcePriority::Library(idx)));
+                let dir_name = format!("aar_{}", idx);
+                resource_dirs_with_priority.push((
+                    res_dir.clone(), 
+                    ResourcePriority::Library(idx),
+                    dir_name
+                ));
             }
         }
 
         // Add additional resource directories (highest priority)
         if let Some(additional_dirs) = &self.config.additional_resource_dirs {
             for (idx, dir) in additional_dirs.iter().enumerate() {
-                resource_dirs_with_priority.push((dir.clone(), ResourcePriority::Additional(idx)));
+                // Create directory name from path: "additional/a/res" -> "additional_a_res"
+                let dir_name = format!("additional_{}", 
+                    dir.to_string_lossy()
+                        .replace(['/', '\\', ':'], "_")
+                        .trim_matches('_')
+                );
+                resource_dirs_with_priority.push((
+                    dir.clone(), 
+                    ResourcePriority::Additional(idx),
+                    dir_name
+                ));
             }
         }
 
         // Sort by priority (lowest to highest) so higher priority resources overwrite lower priority ones
-        resource_dirs_with_priority.sort_by_key(|(_, priority)| priority.value());
+        resource_dirs_with_priority.sort_by_key(|(_, priority, _)| priority.value());
 
-        // Compile all resources into a single directory, with priority-based overwriting
+        // Compile resources - each to its own subdirectory to avoid conflicts
         info!(
-            "Compiling resources from {} directories into {} (priority-based merging)...",
-            resource_dirs_with_priority.len(),
-            compiled_dir.display()
+            "Compiling resources from {} directories...",
+            resource_dirs_with_priority.len()
         );
         let mut missing_dirs = Vec::new();
         let mut valid_resource_dirs = Vec::new();
@@ -211,19 +229,22 @@ impl SkinBuilder {
         // Flat files will be collected per directory and ordered by priority
         let mut flat_files_by_priority: Vec<(ResourcePriority, Vec<PathBuf>, PathBuf)> = Vec::new();
 
-        for (res_dir, priority) in &resource_dirs_with_priority {
+        for (res_dir, priority, dir_name) in &resource_dirs_with_priority {
             if res_dir.exists() {
+                // Compile each resource directory to its own subdirectory
+                let module_compiled_dir = compiled_dir.join(dir_name);
+                std::fs::create_dir_all(&module_compiled_dir)?;
+
                 let files = self.find_resource_files(res_dir)?;
                 if !files.is_empty() {
-                    // All resources compile to the same directory
-                    // Higher priority resources will overwrite lower priority ones with same name
-                    let flat_files = self.compile_all_resources(&files, &compiled_dir)?;
+                    let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
 
                     debug!(
-                        "Resource directory {} has priority {:?}, compiled {} files",
+                        "Resource directory {} has priority {:?}, compiled {} files to {}",
                         res_dir.display(),
                         priority,
-                        flat_files.len()
+                        flat_files.len(),
+                        module_compiled_dir.display()
                     );
                     flat_files_by_priority.push((*priority, flat_files, res_dir.clone()));
                 }
@@ -234,11 +255,69 @@ impl SkinBuilder {
             }
         }
 
-        // All flat files are now in a single directory, merged by priority
-        // Collect all flat files from the compiled directory
-        let all_flat_files = Self::collect_flat_files(&compiled_dir)?;
-        
-        if all_flat_files.is_empty() {
+        // Collect all flat files organized by priority
+        // Sort by priority to ensure correct order for linking
+        flat_files_by_priority.sort_by_key(|(priority, _, _)| priority.value());
+
+        // Separate base from overlays for aapt2 link
+        // Following Android standard: Library (AAR) < Main < Additional (Flavors/BuildTypes)
+        let mut base_flat_files = Vec::new();
+        let mut overlay_flat_files: Vec<Vec<PathBuf>> = Vec::new();
+
+        let has_library = flat_files_by_priority
+            .iter()
+            .any(|(p, _, _)| matches!(p, ResourcePriority::Library(_)));
+
+        for (priority, files, dir) in &flat_files_by_priority {
+            match priority {
+                ResourcePriority::Library(_) => {
+                    // Libraries are always base (lowest priority)
+                    debug!(
+                        "Base resources (Library): {} files from {} (priority {:?})",
+                        files.len(),
+                        dir.display(),
+                        priority
+                    );
+                    base_flat_files.extend(files.clone());
+                }
+                ResourcePriority::Main => {
+                    if has_library {
+                        // If we have libraries, Main is an overlay
+                        debug!(
+                            "Overlay resources (Main): {} files from {} (priority {:?})",
+                            files.len(),
+                            dir.display(),
+                            priority
+                        );
+                        overlay_flat_files.push(files.clone());
+                    } else {
+                        // If no libraries, Main is the base
+                        debug!(
+                            "Base resources (Main): {} files from {} (priority {:?})",
+                            files.len(),
+                            dir.display(),
+                            priority
+                        );
+                        base_flat_files.extend(files.clone());
+                    }
+                }
+                ResourcePriority::Additional(_) => {
+                    // Additional resources (flavors/build types) are always overlays
+                    debug!(
+                        "Overlay resources (Additional): {} files from {} (priority {:?})",
+                        files.len(),
+                        dir.display(),
+                        priority
+                    );
+                    overlay_flat_files.push(files.clone());
+                }
+            }
+        }
+
+        let total_flat_files =
+            base_flat_files.len() + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
+
+        if total_flat_files == 0 {
             AarExtractor::cleanup_aars(&aar_infos)?;
 
             // Provide helpful error message
@@ -268,19 +347,17 @@ impl SkinBuilder {
             });
         }
 
-        info!("Compiled {} resource files total (merged by priority in {})", 
-              all_flat_files.len(), compiled_dir.display());
+        info!(
+            "Compiled {} resource files total: {} base, {} overlay sets",
+            total_flat_files,
+            base_flat_files.len(),
+            overlay_flat_files.len()
+        );
 
         // Save cache
         if let Some(cache) = &self.cache {
             cache.save()?;
         }
-
-        // For aapt2 link, since all resources are merged in one directory,
-        // we can pass all flat files directly without overlay separation
-        // The priority-based overwriting has already happened during compilation
-        let base_flat_files = all_flat_files;
-        let overlay_flat_files: Vec<Vec<PathBuf>> = vec![];
 
         // Create minimal AndroidManifest.xml as temporary file
         // According to requirements, we only need: <manifest package="[package_name]"/>
@@ -619,26 +696,6 @@ impl SkinBuilder {
         }
 
         Ok(files)
-    }
-
-    /// Collect all .flat files from a directory
-    fn collect_flat_files(dir: &Path) -> Result<Vec<PathBuf>> {
-        let mut flat_files = Vec::new();
-
-        if !dir.exists() {
-            return Ok(flat_files);
-        }
-
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.extension().and_then(|s| s.to_str()) == Some("flat") {
-                flat_files.push(path);
-            }
-        }
-
-        Ok(flat_files)
     }
 
     /// Clean build artifacts
