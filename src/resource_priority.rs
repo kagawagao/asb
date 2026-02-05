@@ -6,30 +6,30 @@ use walkdir::WalkDir;
 
 /// Priority level for resource directories
 /// Following Android's standard resource priority order:
-/// Library Dependencies < Main Resources < Product Flavor < Build Type
+/// Library Dependencies < Additional Resources < Main Resources
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ResourcePriority {
     /// Library dependencies / AAR files (lowest priority)
     /// These are external dependencies and have the lowest priority
     Library(usize),
-    /// Main resource directory (medium priority)
+    /// Additional resource directories (medium priority, ordered by index)
+    /// These represent shared/common resources used across flavors
+    /// In additionalResourceDirs, earlier entries have lower priority
+    Additional(usize),
+    /// Main resource directory (highest priority)
     /// This is the main source set (src/main/res)
     Main,
-    /// Additional resource directories (highest priority, ordered by index)
-    /// These represent Product Flavors and Build Types
-    /// In additionalResourceDirs, earlier entries are flavors, later entries are build types
-    Additional(usize),
 }
 
 impl ResourcePriority {
     /// Get numeric priority for comparison
     /// Lower values mean lower priority (will be overridden)
-    /// Following Android standard: Library (0-999) < Main (1000) < Additional (2000+)
+    /// Following Android standard: Library (0-999) < Additional (1000-1999) < Main (2000)
     pub fn value(&self) -> usize {
         match self {
             ResourcePriority::Library(idx) => *idx,
-            ResourcePriority::Main => 1000,
-            ResourcePriority::Additional(idx) => 2000 + idx,
+            ResourcePriority::Additional(idx) => 1000 + idx,
+            ResourcePriority::Main => 2000,
         }
     }
 }
@@ -295,9 +295,9 @@ mod tests {
 
     #[test]
     fn test_priority_ordering() {
-        // Correct Android priority order: Library < Main < Additional
-        assert!(ResourcePriority::Library(0).value() < ResourcePriority::Main.value());
-        assert!(ResourcePriority::Main.value() < ResourcePriority::Additional(0).value());
+        // Correct Android priority order: Library < Additional < Main
+        assert!(ResourcePriority::Library(0).value() < ResourcePriority::Additional(0).value());
+        assert!(ResourcePriority::Additional(0).value() < ResourcePriority::Main.value());
         assert!(ResourcePriority::Library(0).value() < ResourcePriority::Library(1).value());
         assert!(ResourcePriority::Additional(0).value() < ResourcePriority::Additional(1).value());
     }
@@ -318,19 +318,7 @@ mod tests {
         assert!(!tracker.add_resource(library));
         assert_eq!(tracker.stats(), (1, 0));
 
-        // Add main resource with same path (should override library)
-        let main = ResourceInfo {
-            source_path: PathBuf::from("/main/res/drawable/icon.png"),
-            flat_file: PathBuf::from("/build/main_drawable_icon.png.flat"),
-            resource_dir: PathBuf::from("/main/res"),
-            priority: ResourcePriority::Main,
-            normalized_path: "res/drawable/icon.png".to_string(),
-        };
-
-        assert!(tracker.add_resource(main));
-        assert_eq!(tracker.stats(), (1, 1)); // Still 1 resource, 1 conflict
-
-        // Add additional resource with same path (should override main)
+        // Add additional resource with same path (should override library)
         let additional = ResourceInfo {
             source_path: PathBuf::from("/additional/res/drawable/icon.png"),
             flat_file: PathBuf::from("/build/additional_drawable_icon.png.flat"),
@@ -340,6 +328,18 @@ mod tests {
         };
 
         assert!(tracker.add_resource(additional));
+        assert_eq!(tracker.stats(), (1, 1)); // Still 1 resource, 1 conflict
+
+        // Add main resource with same path (should override additional)
+        let main = ResourceInfo {
+            source_path: PathBuf::from("/main/res/drawable/icon.png"),
+            flat_file: PathBuf::from("/build/main_drawable_icon.png.flat"),
+            resource_dir: PathBuf::from("/main/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/drawable/icon.png".to_string(),
+        };
+
+        assert!(tracker.add_resource(main));
         assert_eq!(tracker.stats(), (1, 2)); // Still 1 resource, 2 conflicts
     }
 }

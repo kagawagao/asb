@@ -72,46 +72,26 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
     false
 }
 
-/// Inject package attribute into manifest if missing
-/// Returns the path to the processed manifest (either original or temp file)
-fn inject_package_if_needed(
-    manifest_path: &Path,
+/// Create a minimal AndroidManifest.xml as a temporary file
+/// According to requirements, we only need: <manifest package="[package_name]"/>
+/// This is sufficient for resource-only skin packages
+fn create_minimal_manifest(
     package_name: &str,
     output_dir: &Path,
 ) -> Result<PathBuf> {
-    let manifest_content = fs::read_to_string(manifest_path)?;
-
-    if manifest_content.contains("package=") {
-        // Manifest already has package attribute, use as-is
-        return Ok(manifest_path.to_path_buf());
-    }
-
-    warn!(
-        "AndroidManifest.xml is missing 'package' attribute, injecting package=\"{}\"",
+    // Create minimal manifest content - only package name is required for resource compilation
+    let manifest_content = format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest package=\"{}\" />\n",
         package_name
     );
 
-    // Need to inject package attribute
-    let mut modified_content = manifest_content;
-
-    // Find the <manifest tag and inject the package attribute
-    if let Some(pos) = modified_content.find("<manifest") {
-        // Find the end of the opening tag
-        if let Some(end_pos) = modified_content[pos..].find('>') {
-            let end_index = pos + end_pos;
-
-            // Insert package attribute before the closing >
-            let insert_pos = end_index;
-            let package_attr = format!("\n    package=\"{}\"", package_name);
-            modified_content.insert_str(insert_pos, &package_attr);
-        }
-    }
-
-    // Write to temporary file
+    // Write to temporary file - use package name to avoid conflicts in multi-task builds
     fs::create_dir_all(output_dir)?;
-    let temp_manifest = output_dir.join(".temp_AndroidManifest.xml");
-    fs::write(&temp_manifest, modified_content)?;
+    let temp_manifest = output_dir.join(format!(".temp_AndroidManifest_{}.xml", 
+        package_name.replace('.', "_")));
+    fs::write(&temp_manifest, manifest_content)?;
 
+    debug!("Created minimal manifest at: {}", temp_manifest.display());
     Ok(temp_manifest)
 }
 
@@ -128,10 +108,12 @@ impl SkinBuilder {
         let aapt2 = Aapt2::new(config.aapt2_path.clone())?;
 
         let cache = if config.incremental.unwrap_or(false) {
-            let cache_dir = config
+            // Separate cache directory by package name for stable caching
+            let base_cache_dir = config
                 .cache_dir
                 .clone()
                 .unwrap_or_else(|| config.output_dir.join(".build-cache"));
+            let cache_dir = base_cache_dir.join(&config.package_name);
             let cache = BuildCache::new(cache_dir)?;
             cache.init()?;
             Some(cache)
@@ -173,11 +155,12 @@ impl SkinBuilder {
         }
 
         // Ensure output directories exist
+        // Use package name as compiled directory for stable output location
         let compiled_dir = self
             .config
             .compiled_dir
             .clone()
-            .unwrap_or_else(|| self.config.output_dir.join("compiled"));
+            .unwrap_or_else(|| self.config.output_dir.join(&self.config.package_name));
         std::fs::create_dir_all(&compiled_dir)?;
         std::fs::create_dir_all(&self.config.output_dir)?;
 
@@ -192,25 +175,53 @@ impl SkinBuilder {
             }
         }
 
-        // Collect all resource directories
-        let mut resource_dirs = vec![self.config.resource_dir.clone()];
+        // Collect all resource directories with their priorities
+        // Following Android standard priority: Library (AAR) < Additional < Main
+        let mut resource_dirs_with_priority: Vec<(PathBuf, ResourcePriority, String)> = Vec::new();
+        
+        // Main resource directory (highest priority)
+        resource_dirs_with_priority.push((
+            self.config.resource_dir.clone(), 
+            ResourcePriority::Main,
+            "main".to_string()
+        ));
 
-        // Add AAR resource directories
-        for aar_info in &aar_infos {
+        // Add AAR resource directories (lowest priority)
+        for (idx, aar_info) in aar_infos.iter().enumerate() {
             if let Some(res_dir) = &aar_info.resource_dir {
-                resource_dirs.push(res_dir.clone());
+                let dir_name = format!("aar_{}", idx);
+                resource_dirs_with_priority.push((
+                    res_dir.clone(), 
+                    ResourcePriority::Library(idx),
+                    dir_name
+                ));
             }
         }
 
-        // Add additional resource directories
+        // Add additional resource directories (medium priority)
         if let Some(additional_dirs) = &self.config.additional_resource_dirs {
-            resource_dirs.extend(additional_dirs.clone());
+            for (idx, dir) in additional_dirs.iter().enumerate() {
+                // Create directory name from path: "additional/a/res" -> "additional_a_res"
+                let dir_name = format!("additional_{}", 
+                    dir.to_string_lossy()
+                        .replace(['/', '\\', ':'], "_")
+                        .trim_matches('_')
+                );
+                resource_dirs_with_priority.push((
+                    dir.clone(), 
+                    ResourcePriority::Additional(idx),
+                    dir_name
+                ));
+            }
         }
 
-        // Compile resources - compile each directory separately to avoid file name conflicts
+        // Sort by priority (lowest to highest) so higher priority resources overwrite lower priority ones
+        resource_dirs_with_priority.sort_by_key(|(_, priority, _)| priority.value());
+
+        // Compile resources - each to its own subdirectory to avoid conflicts
         info!(
             "Compiling resources from {} directories...",
-            resource_dirs.len()
+            resource_dirs_with_priority.len()
         );
         let mut missing_dirs = Vec::new();
         let mut valid_resource_dirs = Vec::new();
@@ -219,42 +230,41 @@ impl SkinBuilder {
         // Flat files will be collected per directory and ordered by priority
         let mut flat_files_by_priority: Vec<(ResourcePriority, Vec<PathBuf>, PathBuf)> = Vec::new();
 
-        // Track which directory corresponds to which priority
-        // Following Android standard priority: Library (AAR) < Main < Additional (Flavors/BuildTypes)
-        // Directory index 0 is always the main resource directory
-        let main_res_idx = 0;
-        let aar_start_idx = 1;
-        let aar_count = aar_infos.len();
-        let additional_start_idx = 1 + aar_count;
+        for (res_dir, priority, dir_name) in &resource_dirs_with_priority {
+            // Check if this resource directory has precompiled flat files
+            let precompiled_flat_files = self.config.precompiled_dependencies
+                .as_ref()
+                .and_then(|map| map.get(res_dir))
+                .cloned();
 
-        for (idx, res_dir) in resource_dirs.iter().enumerate() {
-            if res_dir.exists() {
-                // Use a separate compiled subdirectory for each resource directory to avoid flat file conflicts
-                let module_compiled_dir = compiled_dir.join(format!("module_{}", idx));
+            if let Some(flat_files) = precompiled_flat_files {
+                // Use precompiled flat files
+                info!(
+                    "Using {} precompiled flat files for {} (priority {:?})",
+                    flat_files.len(),
+                    res_dir.display(),
+                    priority
+                );
+                
+                flat_files_by_priority.push((*priority, flat_files, res_dir.clone()));
+                valid_resource_dirs.push(res_dir.clone());
+            } else if res_dir.exists() {
+                // Compile each resource directory to its own subdirectory
+                let module_compiled_dir = compiled_dir.join(dir_name);
                 std::fs::create_dir_all(&module_compiled_dir)?;
 
                 let files = self.find_resource_files(res_dir)?;
                 if !files.is_empty() {
                     let flat_files = self.compile_all_resources(&files, &module_compiled_dir)?;
 
-                    // Determine priority for this resource directory
-                    // Android standard: Library < Main < Additional
-                    let priority = if idx == main_res_idx {
-                        ResourcePriority::Main
-                    } else if idx >= aar_start_idx && idx < additional_start_idx {
-                        // AAR dependencies have LOWEST priority (not medium!)
-                        ResourcePriority::Library(idx - aar_start_idx)
-                    } else {
-                        // Additional resources (flavors/build types) have HIGHEST priority
-                        ResourcePriority::Additional(idx - additional_start_idx)
-                    };
-
                     debug!(
-                        "Resource directory {} has priority {:?}",
+                        "Resource directory {} has priority {:?}, compiled {} files to {}",
                         res_dir.display(),
-                        priority
+                        priority,
+                        flat_files.len(),
+                        module_compiled_dir.display()
                     );
-                    flat_files_by_priority.push((priority, flat_files, res_dir.clone()));
+                    flat_files_by_priority.push((*priority, flat_files, res_dir.clone()));
                 }
                 valid_resource_dirs.push(res_dir.clone());
             } else {
@@ -263,20 +273,15 @@ impl SkinBuilder {
             }
         }
 
-        // Sort by priority and separate base from overlays
-        // Following Android standard: Library (AAR) < Main < Additional (Flavors/BuildTypes)
-        // Strategy: Use the lowest priority resources as base, everything else as overlay
+        // Collect all flat files organized by priority
+        // Sort by priority to ensure correct order for linking
         flat_files_by_priority.sort_by_key(|(priority, _, _)| priority.value());
 
+        // Separate base from overlays for aapt2 link
+        // Following Android standard: Library (AAR) < Additional < Main
+        // Library and Additional are base resources, Main is overlay
         let mut base_flat_files = Vec::new();
-        let mut overlay_flat_files = Vec::new();
-
-        // Determine what should be base vs overlay
-        // If there are Library resources, they are base and everything else is overlay
-        // If there are no Library resources, Main is base and Additional are overlays
-        let has_library = flat_files_by_priority
-            .iter()
-            .any(|(p, _, _)| matches!(p, ResourcePriority::Library(_)));
+        let mut overlay_flat_files: Vec<Vec<PathBuf>> = Vec::new();
 
         for (priority, files, dir) in &flat_files_by_priority {
             match priority {
@@ -290,31 +295,20 @@ impl SkinBuilder {
                     );
                     base_flat_files.extend(files.clone());
                 }
-                ResourcePriority::Main => {
-                    if has_library {
-                        // If we have libraries, Main is an overlay
-                        debug!(
-                            "Overlay resources (Main): {} files from {} (priority {:?})",
-                            files.len(),
-                            dir.display(),
-                            priority
-                        );
-                        overlay_flat_files.push(files.clone());
-                    } else {
-                        // If no libraries, Main is the base
-                        debug!(
-                            "Base resources (Main): {} files from {} (priority {:?})",
-                            files.len(),
-                            dir.display(),
-                            priority
-                        );
-                        base_flat_files.extend(files.clone());
-                    }
-                }
                 ResourcePriority::Additional(_) => {
-                    // Additional resources (flavors/build types) are always overlays
+                    // Additional resources are base (medium priority)
                     debug!(
-                        "Overlay resources (Additional): {} files from {} (priority {:?})",
+                        "Base resources (Additional): {} files from {} (priority {:?})",
+                        files.len(),
+                        dir.display(),
+                        priority
+                    );
+                    base_flat_files.extend(files.clone());
+                }
+                ResourcePriority::Main => {
+                    // Main resources are overlay (highest priority)
+                    debug!(
+                        "Overlay resources (Main): {} files from {} (priority {:?})",
                         files.len(),
                         dir.display(),
                         priority
@@ -323,9 +317,6 @@ impl SkinBuilder {
                 }
             }
         }
-
-        info!("Resource compilation complete: {} base files, {} overlay sets (following Android resource priority)", 
-              base_flat_files.len(), overlay_flat_files.len());
 
         let total_flat_files =
             base_flat_files.len() + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
@@ -360,23 +351,28 @@ impl SkinBuilder {
             });
         }
 
-        info!("Compiled {} resource files total", total_flat_files);
+        info!(
+            "Compiled {} resource files total: {} base, {} overlay sets",
+            total_flat_files,
+            base_flat_files.len(),
+            overlay_flat_files.len()
+        );
 
         // Save cache
         if let Some(cache) = &self.cache {
             cache.save()?;
         }
 
-        // Inject package attribute if missing (aapt2's --rename-manifest-package only renames, doesn't add)
-        let processed_manifest = inject_package_if_needed(
-            &self.config.manifest_path,
+        // Create minimal AndroidManifest.xml as temporary file
+        // According to requirements, we only need: <manifest package="[package_name]"/>
+        let processed_manifest = create_minimal_manifest(
             &self.config.package_name,
             &self.config.output_dir,
         )?;
 
         // Determine if we need to set min SDK version for adaptive icons
         // Use aapt2's --min-sdk-version parameter instead of modifying manifest
-        let min_sdk_version = if has_adaptive_icon_resources(&resource_dirs) {
+        let min_sdk_version = if has_adaptive_icon_resources(&valid_resource_dirs) {
             warn!("Detected adaptive-icon resources, setting minimum SDK version to 26");
             Some(26)
         } else {
@@ -406,12 +402,11 @@ impl SkinBuilder {
             self.config.stable_ids_file.as_deref(),
             self.config.package_id.as_deref(),
             min_sdk_version,
+            Some(&compiled_dir),  // Pass compiled_dir to avoid conflicts in multi-task builds
         )?;
 
-        // Cleanup temporary manifest if created
-        if processed_manifest != self.config.manifest_path {
-            fs::remove_file(&processed_manifest).ok();
-        }
+        // Always cleanup temporary manifest (we always create one now)
+        fs::remove_file(&processed_manifest).ok();
 
         // Cleanup AAR extraction directories
         if !aar_infos.is_empty() {
@@ -677,6 +672,17 @@ impl SkinBuilder {
                 }
             }
 
+            // Check if file is in a layout directory and skip it
+            if let Some(parent) = path.parent() {
+                if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+                    // Check for layout directories (layout, layout-land, layout-sw600dp, etc.)
+                    if parent_name.starts_with("layout") {
+                        debug!("Filtering out layout file: {}", path.display());
+                        continue;
+                    }
+                }
+            }
+
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 // Skip hidden files, system files, and specific resource files
                 if name.starts_with('.') || name == "Thumbs.db" {
@@ -737,12 +743,19 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let res_dir = temp_dir.path().join("res");
 
-        // Create valid resource structure (res/values/strings.xml)
+        // Create valid resource structure (res/values/colors.xml - not strings.xml which is filtered)
         let values_dir = res_dir.join("values");
         fs::create_dir_all(&values_dir)?;
-        let valid_file = values_dir.join("strings.xml");
+        let valid_file = values_dir.join("colors.xml");
         fs::write(
             &valid_file,
+            "<?xml version=\"1.0\"?><resources></resources>",
+        )?;
+
+        // Also test that strings.xml is filtered out
+        let strings_file = values_dir.join("strings.xml");
+        fs::write(
+            &strings_file,
             "<?xml version=\"1.0\"?><resources></resources>",
         )?;
 
@@ -778,9 +791,13 @@ mod tests {
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
 
-        // Should only find the valid file, not the ones directly under res/
-        assert_eq!(files.len(), 1, "Should only find 1 valid resource file");
-        assert_eq!(files[0], valid_file, "Should find the strings.xml file");
+        // Should only find the valid file (colors.xml), not strings.xml or files directly under res/
+        assert_eq!(files.len(), 1, "Should only find 1 valid resource file (colors.xml)");
+        assert_eq!(files[0], valid_file, "Should find the colors.xml file");
+        assert!(
+            !files.contains(&strings_file),
+            "Should not include strings.xml (filtered out)"
+        );
         assert!(
             !files.contains(&invalid_file),
             "Should not include invalid.txt"
@@ -809,6 +826,8 @@ mod tests {
         fs::create_dir_all(&layout_dir)?;
 
         // Create valid resource files
+        // Note: strings.xml, styles.xml, attrs.xml are filtered out
+        // Note: layout files are also filtered out
         let strings_xml = values_dir.join("strings.xml");
         let colors_xml = values_dir.join("colors.xml");
         let icon_png = drawable_dir.join("icon.png");
@@ -843,14 +862,15 @@ mod tests {
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
 
-        // Should find all 4 valid files
-        assert_eq!(files.len(), 4, "Should find all 4 valid resource files");
-        assert!(files.contains(&strings_xml), "Should include strings.xml");
+        // Should find only 2 files now: colors.xml and icon.png
+        // strings.xml is filtered, layout files are filtered
+        assert_eq!(files.len(), 2, "Should find 2 valid resource files (colors.xml and icon.png)");
+        assert!(!files.contains(&strings_xml), "Should NOT include strings.xml (filtered)");
         assert!(files.contains(&colors_xml), "Should include colors.xml");
         assert!(files.contains(&icon_png), "Should include icon.png");
         assert!(
-            files.contains(&activity_xml),
-            "Should include activity_main.xml"
+            !files.contains(&activity_xml),
+            "Should NOT include layout files (filtered)"
         );
 
         Ok(())

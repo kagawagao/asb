@@ -340,6 +340,7 @@ impl Aapt2 {
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
+        compiled_dir: Option<&Path>,  // Optional compiled directory for temp files
     ) -> Result<LinkResult> {
         debug!(
             "Linking {} base flat files with {} overlay sets",
@@ -359,11 +360,363 @@ impl Aapt2 {
             stable_ids_file,
             package_id,
             min_sdk_version,
+            compiled_dir,
         )
     }
 
     /// Link using command line arguments
+    /// Uses ZIP file for flat files when count exceeds threshold to avoid command line length limits
     fn link_with_command_line(
+        &self,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],
+        manifest_path: &Path,
+        android_jar: &Path,
+        output_apk: &Path,
+        package_name: Option<&str>,
+        version_code: Option<u32>,
+        version_name: Option<&str>,
+        stable_ids_file: Option<&Path>,
+        package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
+        compiled_dir: Option<&Path>,
+    ) -> Result<LinkResult> {
+        // Calculate total flat file count
+        let total_flat_files = base_flat_files.len() 
+            + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
+        
+        // Threshold for using ZIP (to avoid command line length issues)
+        // Windows has ~8191 char limit, Unix has ~131072, use conservative threshold
+        const USE_ZIP_THRESHOLD: usize = 100;
+        
+        let use_zip = total_flat_files > USE_ZIP_THRESHOLD;
+        
+        if use_zip {
+            debug!("Using ZIP file for {} flat files (exceeds threshold of {})", 
+                   total_flat_files, USE_ZIP_THRESHOLD);
+            self.link_with_zip(
+                base_flat_files,
+                overlay_flat_files,
+                manifest_path,
+                android_jar,
+                output_apk,
+                package_name,
+                version_code,
+                version_name,
+                stable_ids_file,
+                package_id,
+                min_sdk_version,
+                compiled_dir,
+            )
+        } else {
+            self.link_with_direct_args(
+                base_flat_files,
+                overlay_flat_files,
+                manifest_path,
+                android_jar,
+                output_apk,
+                package_name,
+                version_code,
+                version_name,
+                stable_ids_file,
+                package_id,
+                min_sdk_version,
+            )
+        }
+    }
+    
+    /// Link using ZIP file for flat files
+    fn link_with_zip(
+        &self,
+        base_flat_files: &[PathBuf],
+        overlay_flat_files: &[Vec<PathBuf>],
+        manifest_path: &Path,
+        android_jar: &Path,
+        output_apk: &Path,
+        package_name: Option<&str>,
+        version_code: Option<u32>,
+        version_name: Option<&str>,
+        stable_ids_file: Option<&Path>,
+        package_id: Option<&str>,
+        min_sdk_version: Option<u32>,
+        compiled_dir: Option<&Path>,
+    ) -> Result<LinkResult> {
+        use std::fs::File;
+        use zip::write::{FileOptions, ZipWriter};
+        
+        // Create temporary directory for ZIP files
+        // Always use package-specific directory to ensure isolation in multi-task builds
+        let temp_dir = if let Some(compiled) = compiled_dir {
+            // Primary: Use compiled directory (package-specific)
+            compiled.join(".temp_zip")
+        } else if let Some(pkg_name) = package_name {
+            // Fallback: Use package name in output directory
+            output_apk.parent()
+                .unwrap()
+                .join(pkg_name.replace('.', "_"))
+                .join(".temp_zip")
+        } else {
+            // Last resort: Use unique directory based on output APK name
+            let apk_stem = output_apk.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            output_apk.parent()
+                .unwrap()
+                .join(format!(".temp_zip_{}", apk_stem))
+        };
+        std::fs::create_dir_all(&temp_dir)?;
+        
+        // Helper function to check if ZIP needs recreation
+        let needs_zip_recreation = |zip_path: &Path, flat_files: &[PathBuf]| -> bool {
+            if !zip_path.exists() {
+                return true;
+            }
+            
+            // Check if any flat file is newer than the ZIP
+            let zip_modified = match std::fs::metadata(zip_path).and_then(|m| m.modified()) {
+                Ok(time) => time,
+                Err(_) => return true,
+            };
+            
+            for flat_file in flat_files {
+                if let Ok(metadata) = std::fs::metadata(flat_file) {
+                    if let Ok(modified) = metadata.modified() {
+                        if modified > zip_modified {
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            false
+        };
+        
+        // Create ZIP file for base flat files (with caching)
+        let base_zip = temp_dir.join("base_flats.zip");
+        
+        if needs_zip_recreation(&base_zip, base_flat_files) {
+            debug!("Creating base ZIP file: {}", base_zip.display());
+            let base_file = File::create(&base_zip)?;
+            let mut base_zip_writer = ZipWriter::new(base_file);
+            
+            // Track used filenames to detect duplicates
+            let mut used_names = std::collections::HashSet::new();
+            
+            for flat_file in base_flat_files {
+                // Try to create a unique name for this file
+                // Strategy 1: Use relative path from compiled_dir if possible
+                let mut file_name = if let Some(compiled) = compiled_dir {
+                    flat_file.strip_prefix(compiled)
+                        .ok()
+                        .and_then(|p| p.to_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                };
+                
+                // Strategy 2: If that didn't work, try using parent directory + filename
+                if file_name.is_none() {
+                    if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name()) {
+                        if let (Some(parent_name), Some(file_name_str)) = (parent.file_name(), name.to_str()) {
+                            if let Some(parent_str) = parent_name.to_str() {
+                                file_name = Some(format!("{}/{}", parent_str, file_name_str));
+                            }
+                        }
+                    }
+                }
+                
+                // Strategy 3: Fallback to just filename
+                let mut final_name = file_name.unwrap_or_else(|| {
+                    flat_file.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown.flat")
+                        .to_string()
+                });
+                
+                // Ensure uniqueness by appending counter if needed
+                let base_name = final_name.clone();
+                let mut counter = 1;
+                while used_names.contains(&final_name) {
+                    // Extract extension if present
+                    if let Some(pos) = base_name.rfind('.') {
+                        let (name_part, ext_part) = base_name.split_at(pos);
+                        final_name = format!("{}_{}{}", name_part, counter, ext_part);
+                    } else {
+                        final_name = format!("{}_{}", base_name, counter);
+                    }
+                    counter += 1;
+                }
+                used_names.insert(final_name.clone());
+                
+                base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
+                let content = std::fs::read(flat_file)?;
+                std::io::Write::write_all(&mut base_zip_writer, &content)?;
+            }
+            base_zip_writer.finish()?;
+        } else {
+            debug!("Using cached base ZIP file: {}", base_zip.display());
+        }
+        
+        // Create ZIP files for overlay flat files (with caching)
+        let mut overlay_zips = Vec::new();
+        for (idx, overlay_set) in overlay_flat_files.iter().enumerate() {
+            if overlay_set.is_empty() {
+                continue;
+            }
+            
+            let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
+            
+            if needs_zip_recreation(&overlay_zip, overlay_set) {
+                debug!("Creating overlay {} ZIP file: {}", idx, overlay_zip.display());
+                let overlay_file = File::create(&overlay_zip)?;
+                let mut overlay_zip_writer = ZipWriter::new(overlay_file);
+                
+                // Track used filenames to detect duplicates
+                let mut used_names = std::collections::HashSet::new();
+                
+                for flat_file in overlay_set {
+                    // Try to create a unique name for this file
+                    // Strategy 1: Use relative path from compiled_dir if possible
+                    let mut file_name = if let Some(compiled) = compiled_dir {
+                        flat_file.strip_prefix(compiled)
+                            .ok()
+                            .and_then(|p| p.to_str())
+                            .map(|s| s.to_string())
+                    } else {
+                        None
+                    };
+                    
+                    // Strategy 2: If that didn't work, try using parent directory + filename
+                    if file_name.is_none() {
+                        if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name()) {
+                            if let (Some(parent_name), Some(file_name_str)) = (parent.file_name(), name.to_str()) {
+                                if let Some(parent_str) = parent_name.to_str() {
+                                    file_name = Some(format!("{}/{}", parent_str, file_name_str));
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Strategy 3: Fallback to just filename
+                    let mut final_name = file_name.unwrap_or_else(|| {
+                        flat_file.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown.flat")
+                            .to_string()
+                    });
+                    
+                    // Ensure uniqueness by appending counter if needed
+                    let base_name = final_name.clone();
+                    let mut counter = 1;
+                    while used_names.contains(&final_name) {
+                        // Extract extension if present
+                        if let Some(pos) = base_name.rfind('.') {
+                            let (name_part, ext_part) = base_name.split_at(pos);
+                            final_name = format!("{}_{}{}", name_part, counter, ext_part);
+                        } else {
+                            final_name = format!("{}_{}", base_name, counter);
+                        }
+                        counter += 1;
+                    }
+                    used_names.insert(final_name.clone());
+                    
+                    overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
+                    let content = std::fs::read(flat_file)?;
+                    std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
+                }
+                overlay_zip_writer.finish()?;
+            } else {
+                debug!("Using cached overlay {} ZIP file: {}", idx, overlay_zip.display());
+            }
+            
+            overlay_zips.push(overlay_zip);
+        }
+        
+        // Build command with ZIP files
+        let mut cmd = Command::new(&self.aapt2_path);
+        cmd.arg("link")
+            .arg("--manifest")
+            .arg(manifest_path)
+            .arg("-I")
+            .arg(android_jar)
+            .arg("-o")
+            .arg(output_apk)
+            .arg("--auto-add-overlay")
+            .arg("--no-version-vectors")
+            .arg("--keep-raw-values")
+            .arg("--allow-reserved-package-id")
+            .arg("--no-resource-removal");
+
+        if let Some(pkg) = package_name {
+            cmd.arg("--rename-manifest-package").arg(pkg);
+            cmd.arg("--rename-resources-package").arg(pkg);
+        }
+
+        if let Some(code) = version_code {
+            cmd.arg("--version-code").arg(code.to_string());
+        }
+
+        if let Some(name) = version_name {
+            cmd.arg("--version-name").arg(name);
+        }
+
+        if let Some(min_sdk) = min_sdk_version {
+            cmd.arg("--min-sdk-version").arg(min_sdk.to_string());
+        }
+
+        if let Some(stable_ids) = stable_ids_file {
+            cmd.arg("--stable-ids").arg(stable_ids);
+            cmd.arg("--emit-ids").arg(stable_ids);
+        }
+
+        let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
+        cmd.arg("--package-id").arg(pkg_id);
+
+        // Add base ZIP file
+        cmd.arg(&base_zip);
+
+        // Add overlay ZIP files with -R flag
+        for overlay_zip in &overlay_zips {
+            cmd.arg("-R").arg(overlay_zip);
+        }
+
+        debug!("Executing aapt2 link with ZIP files: {:?}", cmd);
+
+        let output = cmd.output().with_context(|| {
+            format!(
+                "Failed to execute aapt2 link with ZIP files\n\
+                 aapt2 path: {}\n\
+                 Manifest: {}\n\
+                 Android JAR: {}\n\
+                 Output: {}",
+                self.aapt2_path.display(),
+                manifest_path.display(),
+                android_jar.display(),
+                output_apk.display()
+            )
+        })?;
+
+        // Note: ZIP files are now cached in .temp_zip directory and not deleted
+        // They will be reused on subsequent builds if flat files haven't changed
+
+        self.process_link_output(
+            output,
+            manifest_path,
+            android_jar,
+            output_apk,
+            package_name,
+            version_code,
+            version_name,
+            stable_ids_file,
+            package_id,
+            base_flat_files,
+            overlay_flat_files,
+            min_sdk_version,
+        )
+    }
+    
+    /// Link using direct command line arguments (original method)
+    fn link_with_direct_args(
         &self,
         base_flat_files: &[PathBuf],
         overlay_flat_files: &[Vec<PathBuf>],

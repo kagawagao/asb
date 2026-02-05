@@ -323,11 +323,12 @@ impl Cli {
         // For array mode with multiple configs, ensure each config has a unique compiled directory
         // to avoid conflicts when building multiple packages from the same output directory
         if build_configs.len() > 1 {
-            for (idx, build_config) in build_configs.iter_mut().enumerate() {
+            for build_config in build_configs.iter_mut() {
                 // Only set if not explicitly configured
+                // Use package name as compiled directory for stable, identifiable output
                 if build_config.compiled_dir.is_none() {
                     let unique_compiled_dir =
-                        build_config.output_dir.join(format!("compiled_{}", idx));
+                        build_config.output_dir.join(&build_config.package_name);
                     build_config.compiled_dir = Some(unique_compiled_dir);
                 }
 
@@ -427,6 +428,10 @@ impl Cli {
                 // Use aapt2 path from first config (all configs should use the same aapt2)
                 let aapt2 = Aapt2::new(build_configs[0].aapt2_path.clone())?;
 
+                // Map to store compiled flat files for each common dependency
+                let mut precompiled_map: std::collections::HashMap<PathBuf, Vec<PathBuf>> = 
+                    std::collections::HashMap::new();
+
                 // Compile common dependencies
                 for common_dep in &common_deps {
                     info!(
@@ -440,8 +445,16 @@ impl Cli {
                         common_dep_cache.needs_recompile(&common_dep.resource_dir)?;
 
                     if needs_recompile {
-                        // Compile the common dependency
-                        let compiled_dir = common_cache_dir.join("compiled");
+                        // Create directory name based on resource path
+                        // e.g., "common/res" -> "common_res"
+                        let dir_name = common_dep.resource_dir
+                            .to_string_lossy()
+                            .replace(['/', '\\', ':'], "_")
+                            .trim_matches('_')
+                            .to_string();
+                        
+                        // Compile each common dependency to its own directory
+                        let compiled_dir = common_cache_dir.join(&dir_name);
                         std::fs::create_dir_all(&compiled_dir)?;
 
                         let compile_result =
@@ -449,9 +462,16 @@ impl Cli {
 
                         if compile_result.success {
                             info!(
-                                "  ✓ Compiled {} resources into {} flat files",
+                                "  ✓ Compiled {} resources into {} flat files in {}",
                                 common_dep.resource_dir.display(),
-                                compile_result.flat_files.len()
+                                compile_result.flat_files.len(),
+                                compiled_dir.display()
+                            );
+
+                            // Store precompiled flat files
+                            precompiled_map.insert(
+                                common_dep.resource_dir.clone(),
+                                compile_result.flat_files.clone()
                             );
 
                             // Update cache
@@ -473,11 +493,26 @@ impl Cli {
                             "  ✓ Using cached compiled resources for {}",
                             common_dep.resource_dir.display()
                         );
+                        
+                        // Get cached flat files
+                        if let Some(flat_files) = common_dep_cache.get_cached_flat_files(&common_dep.resource_dir) {
+                            precompiled_map.insert(
+                                common_dep.resource_dir.clone(),
+                                flat_files
+                            );
+                        }
                     }
                 }
 
                 // Save common dependency cache
                 common_dep_cache.save()?;
+
+                // Update all build configs with precompiled dependencies
+                if !precompiled_map.is_empty() {
+                    for config in &mut build_configs {
+                        config.precompiled_dependencies = Some(precompiled_map.clone());
+                    }
+                }
             }
 
             // Group configs by dependencies
