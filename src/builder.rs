@@ -321,6 +321,7 @@ impl SkinBuilder {
             self.config.stable_ids_file.as_deref(),
             self.config.package_id.as_deref(),
             min_sdk_version,
+            Some(&compiled_dir),  // Pass compiled_dir to avoid conflicts in multi-task builds
         )?;
 
         // Always cleanup temporary manifest (we always create one now)

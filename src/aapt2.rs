@@ -340,6 +340,7 @@ impl Aapt2 {
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
+        compiled_dir: Option<&Path>,  // Optional compiled directory for temp files
     ) -> Result<LinkResult> {
         debug!(
             "Linking {} base flat files with {} overlay sets",
@@ -359,6 +360,7 @@ impl Aapt2 {
             stable_ids_file,
             package_id,
             min_sdk_version,
+            compiled_dir,
         )
     }
 
@@ -377,6 +379,7 @@ impl Aapt2 {
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
+        compiled_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         // Calculate total flat file count
         let total_flat_files = base_flat_files.len() 
@@ -403,6 +406,7 @@ impl Aapt2 {
                 stable_ids_file,
                 package_id,
                 min_sdk_version,
+                compiled_dir,
             )
         } else {
             self.link_with_direct_args(
@@ -435,12 +439,18 @@ impl Aapt2 {
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
+        compiled_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         use std::fs::File;
         use zip::write::{FileOptions, ZipWriter};
         
         // Create temporary directory for ZIP files
-        let temp_dir = output_apk.parent().unwrap().join(".temp_zip");
+        // Use compiled directory if provided to avoid conflicts in multi-task builds
+        let temp_dir = if let Some(compiled) = compiled_dir {
+            compiled.join(".temp_zip")
+        } else {
+            output_apk.parent().unwrap().join(".temp_zip")
+        };
         std::fs::create_dir_all(&temp_dir)?;
         
         // Create ZIP file for base flat files
