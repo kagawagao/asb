@@ -445,11 +445,24 @@ impl Aapt2 {
         use zip::write::{FileOptions, ZipWriter};
         
         // Create temporary directory for ZIP files
-        // Use compiled directory if provided to avoid conflicts in multi-task builds
+        // Always use package-specific directory to ensure isolation in multi-task builds
         let temp_dir = if let Some(compiled) = compiled_dir {
+            // Primary: Use compiled directory (package-specific)
             compiled.join(".temp_zip")
+        } else if let Some(pkg_name) = package_name {
+            // Fallback: Use package name in output directory
+            output_apk.parent()
+                .unwrap()
+                .join(pkg_name.replace('.', "_"))
+                .join(".temp_zip")
         } else {
-            output_apk.parent().unwrap().join(".temp_zip")
+            // Last resort: Use unique directory based on output APK name
+            let apk_stem = output_apk.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            output_apk.parent()
+                .unwrap()
+                .join(format!(".temp_zip_{}", apk_stem))
         };
         std::fs::create_dir_all(&temp_dir)?;
         
