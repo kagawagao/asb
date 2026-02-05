@@ -453,48 +453,42 @@ impl Aapt2 {
         };
         std::fs::create_dir_all(&temp_dir)?;
         
-        // Create ZIP file for base flat files
-        let base_zip = temp_dir.join("base_flats.zip");
-        let base_file = File::create(&base_zip)?;
-        let mut base_zip_writer = ZipWriter::new(base_file);
-        
-        for flat_file in base_flat_files {
-            // Use full path relative to compiled dir to avoid duplicate filenames
-            // e.g., "main/drawable_icon.flat" instead of just "drawable_icon.flat"
-            let file_name = if let Some(compiled) = compiled_dir {
-                flat_file.strip_prefix(compiled)
-                    .ok()
-                    .and_then(|p| p.to_str())
-                    .unwrap_or_else(|| {
-                        flat_file.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown.flat")
-                    })
-            } else {
-                flat_file.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown.flat")
-            };
-            
-            base_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
-            let content = std::fs::read(flat_file)?;
-            std::io::Write::write_all(&mut base_zip_writer, &content)?;
-        }
-        base_zip_writer.finish()?;
-        
-        // Create ZIP files for overlay flat files
-        let mut overlay_zips = Vec::new();
-        for (idx, overlay_set) in overlay_flat_files.iter().enumerate() {
-            if overlay_set.is_empty() {
-                continue;
+        // Helper function to check if ZIP needs recreation
+        let needs_zip_recreation = |zip_path: &Path, flat_files: &[PathBuf]| -> bool {
+            if !zip_path.exists() {
+                return true;
             }
             
-            let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
-            let overlay_file = File::create(&overlay_zip)?;
-            let mut overlay_zip_writer = ZipWriter::new(overlay_file);
+            // Check if any flat file is newer than the ZIP
+            let zip_modified = match std::fs::metadata(zip_path).and_then(|m| m.modified()) {
+                Ok(time) => time,
+                Err(_) => return true,
+            };
             
-            for flat_file in overlay_set {
+            for flat_file in flat_files {
+                if let Ok(metadata) = std::fs::metadata(flat_file) {
+                    if let Ok(modified) = metadata.modified() {
+                        if modified > zip_modified {
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            false
+        };
+        
+        // Create ZIP file for base flat files (with caching)
+        let base_zip = temp_dir.join("base_flats.zip");
+        
+        if needs_zip_recreation(&base_zip, base_flat_files) {
+            debug!("Creating base ZIP file: {}", base_zip.display());
+            let base_file = File::create(&base_zip)?;
+            let mut base_zip_writer = ZipWriter::new(base_file);
+            
+            for flat_file in base_flat_files {
                 // Use full path relative to compiled dir to avoid duplicate filenames
+                // e.g., "main/drawable_icon.flat" instead of just "drawable_icon.flat"
                 let file_name = if let Some(compiled) = compiled_dir {
                     flat_file.strip_prefix(compiled)
                         .ok()
@@ -510,11 +504,55 @@ impl Aapt2 {
                         .unwrap_or("unknown.flat")
                 };
                 
-                overlay_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
+                base_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
                 let content = std::fs::read(flat_file)?;
-                std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
+                std::io::Write::write_all(&mut base_zip_writer, &content)?;
             }
-            overlay_zip_writer.finish()?;
+            base_zip_writer.finish()?;
+        } else {
+            debug!("Using cached base ZIP file: {}", base_zip.display());
+        }
+        
+        // Create ZIP files for overlay flat files (with caching)
+        let mut overlay_zips = Vec::new();
+        for (idx, overlay_set) in overlay_flat_files.iter().enumerate() {
+            if overlay_set.is_empty() {
+                continue;
+            }
+            
+            let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
+            
+            if needs_zip_recreation(&overlay_zip, overlay_set) {
+                debug!("Creating overlay {} ZIP file: {}", idx, overlay_zip.display());
+                let overlay_file = File::create(&overlay_zip)?;
+                let mut overlay_zip_writer = ZipWriter::new(overlay_file);
+                
+                for flat_file in overlay_set {
+                    // Use full path relative to compiled dir to avoid duplicate filenames
+                    let file_name = if let Some(compiled) = compiled_dir {
+                        flat_file.strip_prefix(compiled)
+                            .ok()
+                            .and_then(|p| p.to_str())
+                            .unwrap_or_else(|| {
+                                flat_file.file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("unknown.flat")
+                            })
+                    } else {
+                        flat_file.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown.flat")
+                    };
+                    
+                    overlay_zip_writer.start_file::<_, ()>(file_name, FileOptions::default())?;
+                    let content = std::fs::read(flat_file)?;
+                    std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
+                }
+                overlay_zip_writer.finish()?;
+            } else {
+                debug!("Using cached overlay {} ZIP file: {}", idx, overlay_zip.display());
+            }
+            
             overlay_zips.push(overlay_zip);
         }
         
@@ -582,8 +620,8 @@ impl Aapt2 {
             )
         })?;
 
-        // Cleanup temporary ZIP files
-        std::fs::remove_dir_all(&temp_dir).ok();
+        // Note: ZIP files are now cached in .temp_zip directory and not deleted
+        // They will be reused on subsequent builds if flat files haven't changed
 
         self.process_link_output(
             output,
