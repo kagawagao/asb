@@ -15,6 +15,10 @@ use crate::types::BuildConfig;
 #[command(about = "Android Skin Builder - Build resource-only skin packages using aapt2", long_about = None)]
 #[command(version)]
 pub struct Cli {
+    /// Enable quiet mode (only show errors and results)
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }

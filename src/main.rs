@@ -15,8 +15,14 @@ use cli::Cli;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse CLI first to check for quiet mode
+    let cli = Cli::parse();
+
     // Initialize logging - output to both console and file
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // In quiet mode, only show error level logs
+    let log_level = if cli.quiet { "error" } else { "info" };
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
 
     // Create log file
     // let log_file = File::create("asb.log")?;
@@ -28,6 +34,5 @@ async fn main() -> Result<()> {
         // .with(fmt::layer().with_writer(log_file).with_ansi(false))
         .init();
 
-    let cli = Cli::parse();
     cli.run().await
 }

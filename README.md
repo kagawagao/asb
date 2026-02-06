@@ -210,6 +210,7 @@ project/
 
 **Options:**
 
+- `-q, --quiet` - 静默模式（仅显示错误和结果信息，不显示过程日志）
 - `-c, --config <path>` - 配置文件路径（可选，默认查找 ./asb.config.json）
 - `-r, --resource-dir <path>` - 资源目录路径（覆盖配置文件）
 - `-m, --manifest <path>` - AndroidManifest.xml 路径（可选，会自动生成）
@@ -284,6 +285,12 @@ asb build \
   --android-jar $ANDROID_HOME/platforms/android-34/android.jar \
   --incremental \
   --package-id 0x7f
+```
+
+使用静默模式（仅显示错误和结果）：
+
+```bash
+asb --quiet build --config asb.config.json
 ```
 
 #### `asb clean`
