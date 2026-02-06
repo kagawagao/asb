@@ -158,7 +158,13 @@ pub struct MultiAppConfig {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub incremental: Option<bool>,
 
-    /// Common cache directory (optional)
+    /// Common build directory for intermediate files and cache (optional)
+    /// Used to store compiled resources and build cache
+    /// If not specified, defaults to {outputDir}/.build
+    #[serde(rename = "buildDir", skip_serializing_if = "Option::is_none")]
+    pub build_dir: Option<PathBuf>,
+
+    /// Common cache directory (optional, deprecated, use buildDir instead)
     #[serde(rename = "cacheDir", skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<PathBuf>,
 
@@ -203,6 +209,7 @@ impl MultiAppConfig {
         let common_aapt2_path = self.aapt2_path.clone();
         let common_aar_files = self.aar_files.clone();
         let common_incremental = self.incremental;
+        let common_build_dir = self.build_dir.clone();
         let common_cache_dir = self.cache_dir.clone();
         let common_version_code = self.version_code;
         let common_version_name = self.version_name.clone();
@@ -223,6 +230,7 @@ impl MultiAppConfig {
                         &common_aapt2_path,
                         &common_aar_files,
                         common_incremental,
+                        &common_build_dir,
                         &common_cache_dir,
                         common_version_code,
                         &common_version_name,
@@ -241,6 +249,7 @@ impl MultiAppConfig {
                     &common_aapt2_path,
                     &common_aar_files,
                     common_incremental,
+                    &common_build_dir,
                     &common_cache_dir,
                     common_version_code,
                     &common_version_name,
@@ -264,6 +273,7 @@ impl MultiAppConfig {
         common_aapt2_path: &Option<PathBuf>,
         common_aar_files: &Option<Vec<PathBuf>>,
         common_incremental: Option<bool>,
+        common_build_dir: &Option<PathBuf>,
         common_cache_dir: &Option<PathBuf>,
         common_version_code: Option<u32>,
         common_version_name: &Option<String>,
@@ -303,6 +313,7 @@ impl MultiAppConfig {
             android_jar: common_android_jar.clone(),
             aar_files: common_aar_files.clone(),
             incremental: common_incremental,
+            build_dir: common_build_dir.clone(),
             cache_dir: common_cache_dir.clone(),
             version_code: app.version_code.or(common_version_code),
             version_name: app
@@ -329,6 +340,7 @@ impl MultiAppConfig {
         common_aapt2_path: &Option<PathBuf>,
         common_aar_files: &Option<Vec<PathBuf>>,
         common_incremental: Option<bool>,
+        common_build_dir: &Option<PathBuf>,
         common_cache_dir: &Option<PathBuf>,
         common_version_code: Option<u32>,
         common_version_name: &Option<String>,
@@ -391,6 +403,7 @@ impl MultiAppConfig {
             android_jar: common_android_jar.clone(),
             aar_files: common_aar_files.clone(),
             incremental: common_incremental,
+            build_dir: common_build_dir.clone(),
             cache_dir: common_cache_dir.clone(),
             version_code: flavor
                 .version_code
@@ -454,7 +467,14 @@ pub struct BuildConfig {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub incremental: Option<bool>,
 
-    /// Build cache directory
+    /// Build directory for intermediate files and cache
+    /// Used to store compiled resources and build cache
+    /// If not specified, defaults to {outputDir}/.build
+    #[serde(rename = "buildDir", skip_serializing_if = "Option::is_none")]
+    pub build_dir: Option<PathBuf>,
+
+    /// Build cache directory (deprecated, use buildDir instead)
+    /// If specified, takes precedence over buildDir for cache location
     #[serde(rename = "cacheDir", skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<PathBuf>,
 
@@ -515,6 +535,7 @@ impl BuildConfig {
             aar_files: None,
             aapt2_path: None,
             incremental: Some(true),
+            build_dir: None,
             cache_dir: None,
             version_code: Some(1),
             version_name: Some("1.0.0".to_string()),
@@ -564,6 +585,12 @@ impl BuildConfig {
         if let Some(aapt2) = &self.aapt2_path {
             self.aapt2_path = Some(PathBuf::from(Self::expand_env_vars(
                 &aapt2.to_string_lossy(),
+            )));
+        }
+
+        if let Some(build) = &self.build_dir {
+            self.build_dir = Some(PathBuf::from(Self::expand_env_vars(
+                &build.to_string_lossy(),
             )));
         }
 

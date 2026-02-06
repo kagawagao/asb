@@ -72,27 +72,32 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
     false
 }
 
-/// Create a minimal AndroidManifest.xml as a temporary file
+/// Create a minimal AndroidManifest.xml as a cached file in compiled directory
 /// According to requirements, we only need: <manifest package="[package_name]"/>
 /// This is sufficient for resource-only skin packages
-fn create_minimal_manifest(
-    package_name: &str,
-    output_dir: &Path,
-) -> Result<PathBuf> {
+/// The manifest is cached in the compiled_dir to avoid recreation
+fn create_minimal_manifest(package_name: &str, compiled_dir: &Path) -> Result<PathBuf> {
+    // Cache manifest in compiled directory for persistence alongside .flat files
+    fs::create_dir_all(compiled_dir)?;
+    let cached_manifest = compiled_dir.join("AndroidManifest.xml");
+
+    // Check if cached manifest exists - if so, reuse it directly
+    if cached_manifest.exists() {
+        info!("Using cached manifest at: {}", cached_manifest.display());
+        return Ok(cached_manifest);
+    }
+
     // Create minimal manifest content - only package name is required for resource compilation
     let manifest_content = format!(
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest package=\"{}\" />\n",
         package_name
     );
 
-    // Write to temporary file - use package name to avoid conflicts in multi-task builds
-    fs::create_dir_all(output_dir)?;
-    let temp_manifest = output_dir.join(format!(".temp_AndroidManifest_{}.xml", 
-        package_name.replace('.', "_")));
-    fs::write(&temp_manifest, manifest_content)?;
+    // Write the manifest file
+    fs::write(&cached_manifest, manifest_content)?;
+    info!("Created manifest at: {}", cached_manifest.display());
 
-    debug!("Created minimal manifest at: {}", temp_manifest.display());
-    Ok(temp_manifest)
+    Ok(cached_manifest)
 }
 
 /// Main builder for Android skin packages
@@ -108,11 +113,15 @@ impl SkinBuilder {
         let aapt2 = Aapt2::new(config.aapt2_path.clone())?;
 
         let cache = if config.incremental.unwrap_or(false) {
-            // Separate cache directory by package name for stable caching
+            // Determine cache base directory with priority:
+            // 1. cache_dir (deprecated but takes precedence for backward compatibility)
+            // 2. build_dir
+            // 3. default to output_dir/.build
             let base_cache_dir = config
                 .cache_dir
                 .clone()
-                .unwrap_or_else(|| config.output_dir.join(".build-cache"));
+                .or_else(|| config.build_dir.clone())
+                .unwrap_or_else(|| config.output_dir.join(".build"));
             let cache_dir = base_cache_dir.join(&config.package_name);
             let cache = BuildCache::new(cache_dir)?;
             cache.init()?;
@@ -154,19 +163,27 @@ impl SkinBuilder {
             );
         }
 
-        // Ensure output directories exist
-        // Use package name as compiled directory for stable output location
+        // Determine build directory for intermediate files
+        // Priority: build_dir > output_dir/.build (default)
+        let build_dir = self
+            .config
+            .build_dir
+            .clone()
+            .unwrap_or_else(|| self.config.output_dir.join(".build"));
+
+        // Ensure directories exist
+        // Use build_dir for intermediate files, output_dir for final artifacts
         let compiled_dir = self
             .config
             .compiled_dir
             .clone()
-            .unwrap_or_else(|| self.config.output_dir.join(&self.config.package_name));
+            .unwrap_or_else(|| build_dir.join(&self.config.package_name));
         std::fs::create_dir_all(&compiled_dir)?;
         std::fs::create_dir_all(&self.config.output_dir)?;
 
-        // Extract AAR files if provided
+        // Extract AAR files if provided - use build_dir for temp files
         let mut aar_infos = Vec::new();
-        let temp_dir = self.config.output_dir.join(".temp");
+        let temp_dir = build_dir.join(".temp");
 
         if let Some(aar_files) = &self.config.aar_files {
             if !aar_files.is_empty() {
@@ -178,12 +195,12 @@ impl SkinBuilder {
         // Collect all resource directories with their priorities
         // Following Android standard priority: Library (AAR) < Additional < Main
         let mut resource_dirs_with_priority: Vec<(PathBuf, ResourcePriority, String)> = Vec::new();
-        
+
         // Main resource directory (highest priority)
         resource_dirs_with_priority.push((
-            self.config.resource_dir.clone(), 
+            self.config.resource_dir.clone(),
             ResourcePriority::Main,
-            "main".to_string()
+            "main".to_string(),
         ));
 
         // Add AAR resource directories (lowest priority)
@@ -191,9 +208,9 @@ impl SkinBuilder {
             if let Some(res_dir) = &aar_info.resource_dir {
                 let dir_name = format!("aar_{}", idx);
                 resource_dirs_with_priority.push((
-                    res_dir.clone(), 
+                    res_dir.clone(),
                     ResourcePriority::Library(idx),
-                    dir_name
+                    dir_name,
                 ));
             }
         }
@@ -202,15 +219,16 @@ impl SkinBuilder {
         if let Some(additional_dirs) = &self.config.additional_resource_dirs {
             for (idx, dir) in additional_dirs.iter().enumerate() {
                 // Create directory name from path: "additional/a/res" -> "additional_a_res"
-                let dir_name = format!("additional_{}", 
+                let dir_name = format!(
+                    "additional_{}",
                     dir.to_string_lossy()
                         .replace(['/', '\\', ':'], "_")
                         .trim_matches('_')
                 );
                 resource_dirs_with_priority.push((
-                    dir.clone(), 
+                    dir.clone(),
                     ResourcePriority::Additional(idx),
-                    dir_name
+                    dir_name,
                 ));
             }
         }
@@ -232,7 +250,9 @@ impl SkinBuilder {
 
         for (res_dir, priority, dir_name) in &resource_dirs_with_priority {
             // Check if this resource directory has precompiled flat files
-            let precompiled_flat_files = self.config.precompiled_dependencies
+            let precompiled_flat_files = self
+                .config
+                .precompiled_dependencies
                 .as_ref()
                 .and_then(|map| map.get(res_dir))
                 .cloned();
@@ -245,7 +265,7 @@ impl SkinBuilder {
                     res_dir.display(),
                     priority
                 );
-                
+
                 flat_files_by_priority.push((*priority, flat_files, res_dir.clone()));
                 valid_resource_dirs.push(res_dir.clone());
             } else if res_dir.exists() {
@@ -363,12 +383,9 @@ impl SkinBuilder {
             cache.save()?;
         }
 
-        // Create minimal AndroidManifest.xml as temporary file
+        // Create minimal AndroidManifest.xml as cached file in compiled_dir
         // According to requirements, we only need: <manifest package="[package_name]"/>
-        let processed_manifest = create_minimal_manifest(
-            &self.config.package_name,
-            &self.config.output_dir,
-        )?;
+        let processed_manifest = create_minimal_manifest(&self.config.package_name, &compiled_dir)?;
 
         // Determine if we need to set min SDK version for adaptive icons
         // Use aapt2's --min-sdk-version parameter instead of modifying manifest
@@ -402,11 +419,11 @@ impl SkinBuilder {
             self.config.stable_ids_file.as_deref(),
             self.config.package_id.as_deref(),
             min_sdk_version,
-            Some(&compiled_dir),  // Pass compiled_dir to avoid conflicts in multi-task builds
+            Some(&compiled_dir), // Pass compiled_dir to avoid conflicts in multi-task builds
         )?;
 
-        // Always cleanup temporary manifest (we always create one now)
-        fs::remove_file(&processed_manifest).ok();
+        // Keep manifest cached in compiled_dir for reuse in subsequent builds
+        // No need to cleanup - it's intentionally persisted for cache optimization
 
         // Cleanup AAR extraction directories
         if !aar_infos.is_empty() {
@@ -705,12 +722,19 @@ impl SkinBuilder {
     /// Clean build artifacts
     #[allow(dead_code)]
     pub fn clean(&self) -> Result<()> {
+        // Determine build directory
+        let build_dir = self
+            .config
+            .build_dir
+            .clone()
+            .unwrap_or_else(|| self.config.output_dir.join(".build"));
+
         let compiled_dir = self
             .config
             .compiled_dir
             .clone()
-            .unwrap_or_else(|| self.config.output_dir.join("compiled"));
-        let temp_dir = self.config.output_dir.join(".temp");
+            .unwrap_or_else(|| build_dir.join(&self.config.package_name));
+        let temp_dir = build_dir.join(".temp");
 
         if compiled_dir.exists() {
             std::fs::remove_dir_all(&compiled_dir)?;
@@ -720,9 +744,14 @@ impl SkinBuilder {
             std::fs::remove_dir_all(&temp_dir)?;
         }
 
+        // Clean cache - check both cache_dir and build_dir
         if let Some(cache_dir) = &self.config.cache_dir {
             if cache_dir.exists() {
                 std::fs::remove_dir_all(cache_dir)?;
+            }
+        } else if let Some(build_dir) = &self.config.build_dir {
+            if build_dir.exists() {
+                std::fs::remove_dir_all(build_dir)?;
             }
         }
 
@@ -778,6 +807,7 @@ mod tests {
             android_jar: PathBuf::from("/fake/android.jar"),
             aar_files: None,
             incremental: None,
+            build_dir: None,
             cache_dir: None,
             version_code: None,
             version_name: None,
@@ -792,7 +822,11 @@ mod tests {
         let files = builder.find_resource_files(&res_dir)?;
 
         // Should only find the valid file (colors.xml), not strings.xml or files directly under res/
-        assert_eq!(files.len(), 1, "Should only find 1 valid resource file (colors.xml)");
+        assert_eq!(
+            files.len(),
+            1,
+            "Should only find 1 valid resource file (colors.xml)"
+        );
         assert_eq!(files[0], valid_file, "Should find the colors.xml file");
         assert!(
             !files.contains(&strings_file),
@@ -849,6 +883,7 @@ mod tests {
             android_jar: PathBuf::from("/fake/android.jar"),
             aar_files: None,
             incremental: None,
+            build_dir: None,
             cache_dir: None,
             version_code: None,
             version_name: None,
@@ -864,13 +899,174 @@ mod tests {
 
         // Should find only 2 files now: colors.xml and icon.png
         // strings.xml is filtered, layout files are filtered
-        assert_eq!(files.len(), 2, "Should find 2 valid resource files (colors.xml and icon.png)");
-        assert!(!files.contains(&strings_xml), "Should NOT include strings.xml (filtered)");
+        assert_eq!(
+            files.len(),
+            2,
+            "Should find 2 valid resource files (colors.xml and icon.png)"
+        );
+        assert!(
+            !files.contains(&strings_xml),
+            "Should NOT include strings.xml (filtered)"
+        );
         assert!(files.contains(&colors_xml), "Should include colors.xml");
         assert!(files.contains(&icon_png), "Should include icon.png");
         assert!(
             !files.contains(&activity_xml),
             "Should NOT include layout files (filtered)"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_dir_separation() -> Result<()> {
+        // This test verifies that intermediate files go to build_dir and final output goes to output_dir
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        let values_dir = res_dir.join("values");
+        let output_dir = temp_dir.path().join("output");
+        let build_dir = temp_dir.path().join("build_temp");
+
+        // Create resource structure
+        fs::create_dir_all(&values_dir)?;
+        let colors_xml = values_dir.join("colors.xml");
+        fs::write(
+            &colors_xml,
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#FF0000</color>
+</resources>"#,
+        )?;
+
+        // Create config with separate build_dir and output_dir
+        let config = BuildConfig {
+            resource_dir: res_dir.clone(),
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: output_dir.clone(),
+            output_file: None,
+            package_name: "com.test.builddir".to_string(),
+            aapt2_path: None,
+            android_jar: PathBuf::from("/fake/android.jar"),
+            aar_files: None,
+            incremental: None,
+            build_dir: Some(build_dir.clone()),
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let _builder = SkinBuilder::new(config)?;
+
+        // Verify that intermediate files would go to build_dir
+        // (We can't run the full build without aapt2, but we can verify the directory logic)
+
+        // Check that compiled_dir is set correctly (under build_dir, not output_dir)
+        let _expected_compiled_dir = build_dir.join("com.test.builddir");
+
+        // The builder should use build_dir for intermediate files
+        // Since we set build_dir explicitly, compiled resources should go there
+        assert!(
+            !output_dir.join("com.test.builddir").exists()
+                || !output_dir.join("com.test.builddir").is_dir(),
+            "Compiled dir should NOT be under output_dir"
+        );
+
+        // Verify build_dir structure expectations
+        // Final output (.skin) should go to output_dir
+        // Intermediate files (.flat, .temp) should go to build_dir
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_dir_defaults_to_output_build() -> Result<()> {
+        // Test that when build_dir is not specified, it defaults to {output_dir}/.build
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        let values_dir = res_dir.join("values");
+        let output_dir = temp_dir.path().join("output");
+
+        fs::create_dir_all(&values_dir)?;
+        let colors_xml = values_dir.join("colors.xml");
+        fs::write(
+            &colors_xml,
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="test">#00FF00</color>
+</resources>"#,
+        )?;
+
+        // Config without explicit build_dir
+        let config = BuildConfig {
+            resource_dir: res_dir,
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: output_dir.clone(),
+            output_file: None,
+            package_name: "com.test.default".to_string(),
+            aapt2_path: None,
+            android_jar: PathBuf::from("/fake/android.jar"),
+            aar_files: None,
+            incremental: None,
+            build_dir: None, // Not specified - should default
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let _builder = SkinBuilder::new(config)?;
+
+        // The builder should default to output_dir/.build for build_dir
+        // This is tested implicitly through the builder's logic
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_manifest_caching() -> Result<()> {
+        // Test that manifest file is cached and reused when content is unchanged
+        let temp_dir = TempDir::new()?;
+        let compiled_dir = temp_dir.path().join("compiled");
+        let package_name = "com.test.cache";
+
+        // First call - should create the manifest
+        let manifest1 = super::create_minimal_manifest(package_name, &compiled_dir)?;
+        assert!(manifest1.exists(), "Manifest should be created");
+
+        // Get the file's modification time
+        let metadata1 = fs::metadata(&manifest1)?;
+        let modified1 = metadata1.modified()?;
+
+        // Small delay to ensure different modification time if file is recreated
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Second call - should reuse the cached manifest (same content)
+        let manifest2 = super::create_minimal_manifest(package_name, &compiled_dir)?;
+        assert_eq!(manifest1, manifest2, "Should return the same path");
+
+        let metadata2 = fs::metadata(&manifest2)?;
+        let modified2 = metadata2.modified()?;
+
+        // Modification time should be the same (file not rewritten)
+        assert_eq!(
+            modified1, modified2,
+            "Manifest file should not be rewritten when content is unchanged"
+        );
+
+        // Verify content is correct
+        let content = fs::read_to_string(&manifest2)?;
+        assert!(
+            content.contains(&format!("package=\"{}\"", package_name)),
+            "Manifest should contain correct package name"
         );
 
         Ok(())

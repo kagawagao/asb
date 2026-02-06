@@ -39,6 +39,11 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Build directory for intermediate files and cache
+        /// If not specified, defaults to {output}/.build
+        #[arg(long)]
+        build_dir: Option<PathBuf>,
+
         /// Package name for the skin
         #[arg(short, long)]
         package: Option<String>,
@@ -121,6 +126,7 @@ impl Cli {
                 resource_dir,
                 manifest,
                 output,
+                build_dir,
                 package,
                 android_jar,
                 aar,
@@ -138,6 +144,7 @@ impl Cli {
                     resource_dir,
                     manifest,
                     output,
+                    build_dir,
                     package,
                     android_jar,
                     aar,
@@ -163,6 +170,7 @@ impl Cli {
         resource_dir: Option<PathBuf>,
         manifest: Option<PathBuf>,
         output: Option<PathBuf>,
+        build_dir: Option<PathBuf>,
         package: Option<String>,
         android_jar: Option<PathBuf>,
         aar: Vec<PathBuf>,
@@ -193,6 +201,7 @@ impl Cli {
         let has_cli_args = resource_dir.is_some()
             || manifest.is_some()
             || output.is_some()
+            || build_dir.is_some()
             || package.is_some()
             || android_jar.is_some()
             || !aar.is_empty()
@@ -281,6 +290,9 @@ impl Cli {
                 if let Some(ref o) = output {
                     build_config.output_dir = o.clone();
                 }
+                if let Some(ref bd) = build_dir {
+                    build_config.build_dir = Some(bd.clone());
+                }
                 if let Some(ref p) = package {
                     build_config.package_name = p.clone();
                 }
@@ -321,14 +333,17 @@ impl Cli {
         };
 
         // For array mode with multiple configs, ensure each config has a unique compiled directory
-        // to avoid conflicts when building multiple packages from the same output directory
+        // to avoid conflicts when building multiple packages from the same build directory
         if build_configs.len() > 1 {
             for build_config in build_configs.iter_mut() {
                 // Only set if not explicitly configured
-                // Use package name as compiled directory for stable, identifiable output
+                // Use build_dir for intermediate files, not output_dir
                 if build_config.compiled_dir.is_none() {
-                    let unique_compiled_dir =
-                        build_config.output_dir.join(&build_config.package_name);
+                    let build_dir = build_config
+                        .build_dir
+                        .clone()
+                        .unwrap_or_else(|| build_config.output_dir.join(".build"));
+                    let unique_compiled_dir = build_dir.join(&build_config.package_name);
                     build_config.compiled_dir = Some(unique_compiled_dir);
                 }
 
@@ -413,12 +428,16 @@ impl Cli {
                 );
 
                 // Determine cache directory for common dependencies
-                // Use the first config's cache directory as the base, since all configs should use compatible settings
+                // Use the first config's build_dir as the base, since all configs should use compatible settings
                 // for shared common dependency compilation
+                let base_build_dir = build_configs[0]
+                    .build_dir
+                    .clone()
+                    .unwrap_or_else(|| build_configs[0].output_dir.join(".build"));
                 let base_cache_dir = build_configs[0]
                     .cache_dir
                     .clone()
-                    .unwrap_or_else(|| build_configs[0].output_dir.join(".build-cache"));
+                    .unwrap_or_else(|| base_build_dir.clone());
                 let common_cache_dir = base_cache_dir.join("common-deps");
 
                 // Initialize common dependency cache
@@ -429,7 +448,7 @@ impl Cli {
                 let aapt2 = Aapt2::new(build_configs[0].aapt2_path.clone())?;
 
                 // Map to store compiled flat files for each common dependency
-                let mut precompiled_map: std::collections::HashMap<PathBuf, Vec<PathBuf>> = 
+                let mut precompiled_map: std::collections::HashMap<PathBuf, Vec<PathBuf>> =
                     std::collections::HashMap::new();
 
                 // Compile common dependencies
@@ -447,12 +466,13 @@ impl Cli {
                     if needs_recompile {
                         // Create directory name based on resource path
                         // e.g., "common/res" -> "common_res"
-                        let dir_name = common_dep.resource_dir
+                        let dir_name = common_dep
+                            .resource_dir
                             .to_string_lossy()
                             .replace(['/', '\\', ':'], "_")
                             .trim_matches('_')
                             .to_string();
-                        
+
                         // Compile each common dependency to its own directory
                         let compiled_dir = common_cache_dir.join(&dir_name);
                         std::fs::create_dir_all(&compiled_dir)?;
@@ -471,7 +491,7 @@ impl Cli {
                             // Store precompiled flat files
                             precompiled_map.insert(
                                 common_dep.resource_dir.clone(),
-                                compile_result.flat_files.clone()
+                                compile_result.flat_files.clone(),
                             );
 
                             // Update cache
@@ -493,13 +513,12 @@ impl Cli {
                             "  ✓ Using cached compiled resources for {}",
                             common_dep.resource_dir.display()
                         );
-                        
+
                         // Get cached flat files
-                        if let Some(flat_files) = common_dep_cache.get_cached_flat_files(&common_dep.resource_dir) {
-                            precompiled_map.insert(
-                                common_dep.resource_dir.clone(),
-                                flat_files
-                            );
+                        if let Some(flat_files) =
+                            common_dep_cache.get_cached_flat_files(&common_dep.resource_dir)
+                        {
+                            precompiled_map.insert(common_dep.resource_dir.clone(), flat_files);
                         }
                     }
                 }
