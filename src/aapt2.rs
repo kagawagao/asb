@@ -340,7 +340,7 @@ impl Aapt2 {
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
-        compiled_dir: Option<&Path>,  // Optional compiled directory for temp files
+        compiled_dir: Option<&Path>, // Optional compiled directory for temp files
     ) -> Result<LinkResult> {
         debug!(
             "Linking {} base flat files with {} overlay sets",
@@ -382,18 +382,20 @@ impl Aapt2 {
         compiled_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         // Calculate total flat file count
-        let total_flat_files = base_flat_files.len() 
-            + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
-        
+        let total_flat_files =
+            base_flat_files.len() + overlay_flat_files.iter().map(|v| v.len()).sum::<usize>();
+
         // Threshold for using ZIP (to avoid command line length issues)
         // Windows has ~8191 char limit, Unix has ~131072, use conservative threshold
         const USE_ZIP_THRESHOLD: usize = 100;
-        
+
         let use_zip = total_flat_files > USE_ZIP_THRESHOLD;
-        
+
         if use_zip {
-            debug!("Using ZIP file for {} flat files (exceeds threshold of {})", 
-                   total_flat_files, USE_ZIP_THRESHOLD);
+            debug!(
+                "Using ZIP file for {} flat files (exceeds threshold of {})",
+                total_flat_files, USE_ZIP_THRESHOLD
+            );
             self.link_with_zip(
                 base_flat_files,
                 overlay_flat_files,
@@ -424,7 +426,7 @@ impl Aapt2 {
             )
         }
     }
-    
+
     /// Link using ZIP file for flat files
     fn link_with_zip(
         &self,
@@ -443,7 +445,7 @@ impl Aapt2 {
     ) -> Result<LinkResult> {
         use std::fs::File;
         use zip::write::{FileOptions, ZipWriter};
-        
+
         // Create temporary directory for ZIP files
         // Always use package-specific directory to ensure isolation in multi-task builds
         let temp_dir = if let Some(compiled) = compiled_dir {
@@ -451,33 +453,36 @@ impl Aapt2 {
             compiled.join(".temp_zip")
         } else if let Some(pkg_name) = package_name {
             // Fallback: Use package name in output directory
-            output_apk.parent()
+            output_apk
+                .parent()
                 .unwrap()
                 .join(pkg_name.replace('.', "_"))
                 .join(".temp_zip")
         } else {
             // Last resort: Use unique directory based on output APK name
-            let apk_stem = output_apk.file_stem()
+            let apk_stem = output_apk
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown");
-            output_apk.parent()
+            output_apk
+                .parent()
                 .unwrap()
                 .join(format!(".temp_zip_{}", apk_stem))
         };
         std::fs::create_dir_all(&temp_dir)?;
-        
+
         // Helper function to check if ZIP needs recreation
         let needs_zip_recreation = |zip_path: &Path, flat_files: &[PathBuf]| -> bool {
             if !zip_path.exists() {
                 return true;
             }
-            
+
             // Check if any flat file is newer than the ZIP
             let zip_modified = match std::fs::metadata(zip_path).and_then(|m| m.modified()) {
                 Ok(time) => time,
                 Err(_) => return true,
             };
-            
+
             for flat_file in flat_files {
                 if let Ok(metadata) = std::fs::metadata(flat_file) {
                     if let Ok(modified) = metadata.modified() {
@@ -487,52 +492,57 @@ impl Aapt2 {
                     }
                 }
             }
-            
+
             false
         };
-        
+
         // Create ZIP file for base flat files (with caching)
         let base_zip = temp_dir.join("base_flats.zip");
-        
+
         if needs_zip_recreation(&base_zip, base_flat_files) {
             debug!("Creating base ZIP file: {}", base_zip.display());
             let base_file = File::create(&base_zip)?;
             let mut base_zip_writer = ZipWriter::new(base_file);
-            
+
             // Track used filenames to detect duplicates
             let mut used_names = std::collections::HashSet::new();
-            
+
             for flat_file in base_flat_files {
                 // Try to create a unique name for this file
                 // Strategy 1: Use relative path from compiled_dir if possible
                 let mut file_name = if let Some(compiled) = compiled_dir {
-                    flat_file.strip_prefix(compiled)
+                    flat_file
+                        .strip_prefix(compiled)
                         .ok()
                         .and_then(|p| p.to_str())
                         .map(|s| s.to_string())
                 } else {
                     None
                 };
-                
+
                 // Strategy 2: If that didn't work, try using parent directory + filename
                 if file_name.is_none() {
-                    if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name()) {
-                        if let (Some(parent_name), Some(file_name_str)) = (parent.file_name(), name.to_str()) {
+                    if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name())
+                    {
+                        if let (Some(parent_name), Some(file_name_str)) =
+                            (parent.file_name(), name.to_str())
+                        {
                             if let Some(parent_str) = parent_name.to_str() {
                                 file_name = Some(format!("{}/{}", parent_str, file_name_str));
                             }
                         }
                     }
                 }
-                
+
                 // Strategy 3: Fallback to just filename
                 let mut final_name = file_name.unwrap_or_else(|| {
-                    flat_file.file_name()
+                    flat_file
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown.flat")
                         .to_string()
                 });
-                
+
                 // Ensure uniqueness by appending counter if needed
                 let base_name = final_name.clone();
                 let mut counter = 1;
@@ -547,7 +557,7 @@ impl Aapt2 {
                     counter += 1;
                 }
                 used_names.insert(final_name.clone());
-                
+
                 base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
                 let content = std::fs::read(flat_file)?;
                 std::io::Write::write_all(&mut base_zip_writer, &content)?;
@@ -556,55 +566,65 @@ impl Aapt2 {
         } else {
             debug!("Using cached base ZIP file: {}", base_zip.display());
         }
-        
+
         // Create ZIP files for overlay flat files (with caching)
         let mut overlay_zips = Vec::new();
         for (idx, overlay_set) in overlay_flat_files.iter().enumerate() {
             if overlay_set.is_empty() {
                 continue;
             }
-            
+
             let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
-            
+
             if needs_zip_recreation(&overlay_zip, overlay_set) {
-                debug!("Creating overlay {} ZIP file: {}", idx, overlay_zip.display());
+                debug!(
+                    "Creating overlay {} ZIP file: {}",
+                    idx,
+                    overlay_zip.display()
+                );
                 let overlay_file = File::create(&overlay_zip)?;
                 let mut overlay_zip_writer = ZipWriter::new(overlay_file);
-                
+
                 // Track used filenames to detect duplicates
                 let mut used_names = std::collections::HashSet::new();
-                
+
                 for flat_file in overlay_set {
                     // Try to create a unique name for this file
                     // Strategy 1: Use relative path from compiled_dir if possible
                     let mut file_name = if let Some(compiled) = compiled_dir {
-                        flat_file.strip_prefix(compiled)
+                        flat_file
+                            .strip_prefix(compiled)
                             .ok()
                             .and_then(|p| p.to_str())
                             .map(|s| s.to_string())
                     } else {
                         None
                     };
-                    
+
                     // Strategy 2: If that didn't work, try using parent directory + filename
                     if file_name.is_none() {
-                        if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name()) {
-                            if let (Some(parent_name), Some(file_name_str)) = (parent.file_name(), name.to_str()) {
+                        if let (Some(parent), Some(name)) =
+                            (flat_file.parent(), flat_file.file_name())
+                        {
+                            if let (Some(parent_name), Some(file_name_str)) =
+                                (parent.file_name(), name.to_str())
+                            {
                                 if let Some(parent_str) = parent_name.to_str() {
                                     file_name = Some(format!("{}/{}", parent_str, file_name_str));
                                 }
                             }
                         }
                     }
-                    
+
                     // Strategy 3: Fallback to just filename
                     let mut final_name = file_name.unwrap_or_else(|| {
-                        flat_file.file_name()
+                        flat_file
+                            .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown.flat")
                             .to_string()
                     });
-                    
+
                     // Ensure uniqueness by appending counter if needed
                     let base_name = final_name.clone();
                     let mut counter = 1;
@@ -619,19 +639,23 @@ impl Aapt2 {
                         counter += 1;
                     }
                     used_names.insert(final_name.clone());
-                    
+
                     overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
                     let content = std::fs::read(flat_file)?;
                     std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
                 }
                 overlay_zip_writer.finish()?;
             } else {
-                debug!("Using cached overlay {} ZIP file: {}", idx, overlay_zip.display());
+                debug!(
+                    "Using cached overlay {} ZIP file: {}",
+                    idx,
+                    overlay_zip.display()
+                );
             }
-            
+
             overlay_zips.push(overlay_zip);
         }
-        
+
         // Build command with ZIP files
         let mut cmd = Command::new(&self.aapt2_path);
         cmd.arg("link")
@@ -714,7 +738,7 @@ impl Aapt2 {
             min_sdk_version,
         )
     }
-    
+
     /// Link using direct command line arguments (original method)
     fn link_with_direct_args(
         &self,

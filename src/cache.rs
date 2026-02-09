@@ -214,7 +214,7 @@ impl CommonDependencyCache {
     /// Calculate hash of all files in a directory
     fn calculate_directory_hash(dir_path: &Path) -> Result<String> {
         use walkdir::WalkDir;
-        
+
         let mut hasher = Sha256::new();
         let mut files: Vec<PathBuf> = WalkDir::new(dir_path)
             .into_iter()
@@ -222,10 +222,10 @@ impl CommonDependencyCache {
             .filter(|e| e.file_type().is_file())
             .map(|e| e.path().to_path_buf())
             .collect();
-        
+
         // Sort to ensure consistent hashing
         files.sort();
-        
+
         for file in files {
             if let Ok(content) = std::fs::read(&file) {
                 // Hash file path relative to dir_path
@@ -236,7 +236,7 @@ impl CommonDependencyCache {
                 hasher.update(&content);
             }
         }
-        
+
         Ok(format!("{:x}", hasher.finalize()))
     }
 
@@ -296,7 +296,10 @@ impl CommonDependencyCache {
     pub fn save(&self) -> Result<()> {
         let content = serde_json::to_string_pretty(&self.cache)?;
         std::fs::write(&self.cache_file, content)?;
-        debug!("Common dependency cache saved to: {}", self.cache_file.display());
+        debug!(
+            "Common dependency cache saved to: {}",
+            self.cache_file.display()
+        );
         Ok(())
     }
 

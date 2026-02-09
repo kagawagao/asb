@@ -1,6 +1,6 @@
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use anyhow::Result;
 use tracing::info;
 
 use crate::types::BuildConfig;
@@ -22,54 +22,68 @@ pub struct CommonDependency {
 }
 
 /// Group configurations by their dependencies based on shared resource directories
-/// 
+///
 /// Analyzes the `additionalResourceDirs` field to detect dependencies between configurations.
 /// A configuration depends on another if it references a resource directory that is the main
 /// resource directory of another configuration.
-/// 
+///
 /// # Returns
-/// 
+///
 /// A tuple of:
 /// - `independent_configs`: Configurations with no dependencies that can be built in parallel
 /// - `dependency_groups`: Groups of dependent configurations that must be built sequentially
 ///   within each group (in topological order), though different groups can be processed in parallel
-pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) -> Result<(Vec<ConfigWithIndex>, Vec<Vec<ConfigWithIndex>>)> {
+pub fn group_configs_by_dependencies(
+    configs: Vec<BuildConfig>,
+) -> Result<(Vec<ConfigWithIndex>, Vec<Vec<ConfigWithIndex>>)> {
     if configs.is_empty() {
         return Ok((vec![], vec![]));
     }
-    
+
     if configs.len() == 1 {
-        return Ok((vec![ConfigWithIndex { index: 0, config: configs.into_iter().next().unwrap() }], vec![]));
+        return Ok((
+            vec![ConfigWithIndex {
+                index: 0,
+                config: configs.into_iter().next().unwrap(),
+            }],
+            vec![],
+        ));
     }
 
     // Build a map of resource directories to config indices that use them
     let mut resource_dir_to_configs: HashMap<String, HashSet<usize>> = HashMap::new();
-    
+
     for (idx, config) in configs.iter().enumerate() {
         // Normalize and register the main resource directory
         let main_res = normalize_path(&config.resource_dir);
-        resource_dir_to_configs.entry(main_res).or_insert_with(HashSet::new).insert(idx);
-        
+        resource_dir_to_configs
+            .entry(main_res)
+            .or_insert_with(HashSet::new)
+            .insert(idx);
+
         // Register additional resource directories if present
         if let Some(additional_dirs) = &config.additional_resource_dirs {
             for dir in additional_dirs {
                 let normalized = normalize_path(dir);
-                resource_dir_to_configs.entry(normalized).or_insert_with(HashSet::new).insert(idx);
+                resource_dir_to_configs
+                    .entry(normalized)
+                    .or_insert_with(HashSet::new)
+                    .insert(idx);
             }
         }
     }
-    
+
     // Build dependency graph: config_idx -> Vec<config_idx it depends on>
     let mut dependencies: HashMap<usize, Vec<usize>> = HashMap::new();
-    
+
     for (idx, config) in configs.iter().enumerate() {
         let mut deps = Vec::new();
-        
+
         // Check if any of this config's additional resource dirs are provided by other configs
         if let Some(additional_dirs) = &config.additional_resource_dirs {
             for dir in additional_dirs {
                 let normalized = normalize_path(dir);
-                
+
                 // Find which configs provide this resource directory
                 if let Some(providers) = resource_dir_to_configs.get(&normalized) {
                     for &provider_idx in providers {
@@ -86,21 +100,21 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) -> Result<(Vec<C
                 }
             }
         }
-        
+
         if !deps.is_empty() {
             dependencies.insert(idx, deps);
         }
     }
-    
+
     // Perform topological sort to determine build order
     let sorted_indices = topological_sort(configs.len(), &dependencies)?;
-    
+
     // Separate into independent and dependent groups
     let mut independent = Vec::new();
     let mut dependent_groups: Vec<Vec<ConfigWithIndex>> = Vec::new();
     let mut current_group: Vec<ConfigWithIndex> = Vec::new();
     let mut in_dependency_chain = HashSet::new();
-    
+
     // Mark all configs that are part of dependency chains
     for (&config_idx, deps) in &dependencies {
         in_dependency_chain.insert(config_idx);
@@ -108,39 +122,39 @@ pub fn group_configs_by_dependencies(configs: Vec<BuildConfig>) -> Result<(Vec<C
             in_dependency_chain.insert(dep);
         }
     }
-    
+
     // Process sorted indices
     for idx in sorted_indices {
         let config = configs[idx].clone();
         let config_with_idx = ConfigWithIndex { index: idx, config };
-        
+
         if in_dependency_chain.contains(&idx) {
             current_group.push(config_with_idx);
         } else {
             independent.push(config_with_idx);
         }
     }
-    
+
     if !current_group.is_empty() {
         dependent_groups.push(current_group);
     }
-    
+
     Ok((independent, dependent_groups))
 }
 
 /// Normalize a path to a string for comparison purposes
-/// 
+///
 /// Attempts to convert the path to an absolute canonical path to ensure that different
 /// representations of the same path (e.g., relative vs absolute, with/without trailing slashes)
 /// are treated as equal. If canonicalization fails (e.g., path doesn't exist yet), falls back
 /// to normalizing the string representation by replacing backslashes with forward slashes.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `path` - The path to normalize
-/// 
+///
 /// # Returns
-/// 
+///
 /// A normalized string representation of the path suitable for comparison
 fn normalize_path(path: &PathBuf) -> String {
     // Convert to absolute path if possible, otherwise use as-is
@@ -153,45 +167,50 @@ fn normalize_path(path: &PathBuf) -> String {
 }
 
 /// Perform topological sort on the dependency graph using Kahn's algorithm
-/// 
+///
 /// Topological sorting arranges configurations so that dependencies are always built before
 /// their dependents. Uses a breadth-first approach with a queue (VecDeque) for deterministic
 /// ordering. Detects circular dependencies and returns an error if found.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `num_configs` - Total number of configurations to sort
 /// * `dependencies` - A map where keys are dependent config indices and values are vectors of
 ///   the config indices they depend on (i.e., `dependent -> [dependencies]`)
-/// 
+///
 /// # Returns
-/// 
+///
 /// A vector of configuration indices in topological order (dependencies before dependents),
 /// or an error if a circular dependency is detected
-fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>>) -> Result<Vec<usize>> {
+fn topological_sort(
+    num_configs: usize,
+    dependencies: &HashMap<usize, Vec<usize>>,
+) -> Result<Vec<usize>> {
     let mut in_degree = vec![0; num_configs];
     let mut adj_list: HashMap<usize, Vec<usize>> = HashMap::new();
-    
+
     // Build adjacency list and calculate in-degrees
     // dependencies maps: dependent -> dependencies
     // We need: dependency -> dependents for topological sort
     for (dependent, deps) in dependencies {
         for &dependency in deps {
-            adj_list.entry(dependency).or_insert_with(Vec::new).push(*dependent);
+            adj_list
+                .entry(dependency)
+                .or_insert_with(Vec::new)
+                .push(*dependent);
             in_degree[*dependent] += 1;
         }
     }
-    
+
     // Find all nodes with in-degree 0 (no dependencies)
-    let mut queue: std::collections::VecDeque<usize> = (0..num_configs)
-        .filter(|&i| in_degree[i] == 0)
-        .collect();
-    
+    let mut queue: std::collections::VecDeque<usize> =
+        (0..num_configs).filter(|&i| in_degree[i] == 0).collect();
+
     let mut sorted = Vec::new();
-    
+
     while let Some(node) = queue.pop_front() {
         sorted.push(node);
-        
+
         // Reduce in-degree for all dependents
         if let Some(dependents) = adj_list.get(&node) {
             for &dependent in dependents {
@@ -202,27 +221,27 @@ fn topological_sort(num_configs: usize, dependencies: &HashMap<usize, Vec<usize>
             }
         }
     }
-    
+
     // Check for cycles
     if sorted.len() != num_configs {
         anyhow::bail!("Circular dependency detected in configuration dependencies");
     }
-    
+
     Ok(sorted)
 }
 
 /// Extract common dependencies from multiple configurations
-/// 
+///
 /// Analyzes all configurations to identify resource directories that are used by multiple apps
 /// as additional resource directories. These are considered common dependencies that should be
 /// compiled separately and cached for reuse.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `configs` - The list of build configurations to analyze
-/// 
+///
 /// # Returns
-/// 
+///
 /// A vector of CommonDependency structs, each representing a resource directory that is
 /// shared by multiple configurations. Returns empty vector for 0 or 1 configs since common
 /// dependencies require at least 2 apps sharing a resource directory.
@@ -231,47 +250,49 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
     if configs.len() <= 1 {
         return vec![];
     }
-    
+
     // Map of normalized resource directory paths to:
     // - the configurations that reference them
     // - the original PathBuf (to avoid losing the original path)
     let mut resource_usage: HashMap<String, (Vec<usize>, PathBuf)> = HashMap::new();
-    
+
     // Track which resource directories are main resource dirs
     let mut main_resource_dirs: HashSet<String> = HashSet::new();
-    
+
     // First pass: collect main resource directories
     for config in configs.iter() {
         let main_res = normalize_path(&config.resource_dir);
         main_resource_dirs.insert(main_res.clone());
     }
-    
+
     // Second pass: collect all additional resource directory usage
     for (idx, config) in configs.iter().enumerate() {
         if let Some(additional_dirs) = &config.additional_resource_dirs {
             for dir in additional_dirs {
                 let normalized = normalize_path(dir);
                 // Track all additional resource dirs, not just those that are main dirs
-                resource_usage.entry(normalized)
+                resource_usage
+                    .entry(normalized)
                     .or_insert_with(|| (Vec::new(), dir.clone()))
                     .0
                     .push(idx);
             }
         }
     }
-    
+
     // Extract common dependencies (resource dirs used by multiple configs)
     let mut common_deps = Vec::new();
-    
+
     for (resource_path, (dependent_indices, original_path)) in resource_usage {
         if dependent_indices.len() > 1 {
             // This is a common dependency used by multiple configurations
             // Prefer using the main resource dir PathBuf if available, otherwise use from additional dirs
-            let path_buf = configs.iter()
+            let path_buf = configs
+                .iter()
                 .find(|c| normalize_path(&c.resource_dir) == resource_path)
                 .map(|c| c.resource_dir.clone())
                 .unwrap_or(original_path);
-            
+
             info!(
                 "Found common dependency: {} (used by {} configs)",
                 path_buf.display(),
@@ -283,7 +304,7 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
             });
         }
     }
-    
+
     common_deps
 }
 
@@ -331,10 +352,10 @@ mod tests {
     fn test_independent_configs() {
         let config1 = test_config("./res1", "com.example.app1", None);
         let config2 = test_config("./res2", "com.example.app2", None);
-        
+
         let configs = vec![config1, config2];
         let (independent, dependent) = group_configs_by_dependencies(configs).unwrap();
-        
+
         // Both should be independent as they don't share resources
         assert_eq!(independent.len(), 2);
         assert_eq!(dependent.len(), 0);
@@ -364,7 +385,10 @@ mod tests {
         let sorted_indices: Vec<usize> = dependent[0].iter().map(|c| c.index).collect();
         let base_idx = sorted_indices.iter().position(|&i| i == 0).unwrap();
         let feature_idx = sorted_indices.iter().position(|&i| i == 1).unwrap();
-        assert!(base_idx < feature_idx, "Base should be built before feature");
+        assert!(
+            base_idx < feature_idx,
+            "Base should be built before feature"
+        );
     }
 
     #[test]
@@ -424,7 +448,10 @@ mod tests {
 
         // Verify independent config
         assert_eq!(independent[0].index, 0);
-        assert_eq!(independent[0].config.package_name, "com.example.independent");
+        assert_eq!(
+            independent[0].config.package_name,
+            "com.example.independent"
+        );
     }
 
     #[test]
@@ -498,14 +525,18 @@ mod tests {
 
         // Should find both core/res and shared/res as common dependencies
         assert_eq!(common_deps.len(), 2);
-        
+
         // Check that both are found (order may vary)
-        let core_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./core/res"));
-        let shared_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./shared/res"));
-        
+        let core_dep = common_deps
+            .iter()
+            .find(|d| d.resource_dir == PathBuf::from("./core/res"));
+        let shared_dep = common_deps
+            .iter()
+            .find(|d| d.resource_dir == PathBuf::from("./shared/res"));
+
         assert!(core_dep.is_some());
         assert!(shared_dep.is_some());
-        
+
         // Both should have 2 dependents (app1 and app2)
         assert_eq!(core_dep.unwrap().dependent_configs.len(), 2);
         assert_eq!(shared_dep.unwrap().dependent_configs.len(), 2);
@@ -514,7 +545,7 @@ mod tests {
     #[test]
     fn test_extract_common_dependencies_from_flavors() {
         use crate::types::{AppConfig, FlavorConfig, MultiAppConfig};
-        
+
         // Base config
         let base_app = AppConfig {
             base_dir: None,
@@ -592,10 +623,10 @@ mod tests {
 
         // Convert to BuildConfigs
         let configs = multi_config.into_build_configs();
-        
+
         // Should have 3 configs: 1 base + 2 flavors
         assert_eq!(configs.len(), 3);
-        
+
         // Extract common dependencies
         let common_deps = extract_common_dependencies(&configs);
 
@@ -603,7 +634,7 @@ mod tests {
         assert_eq!(common_deps.len(), 1);
         assert_eq!(common_deps[0].resource_dir, PathBuf::from("./base/res"));
         assert_eq!(common_deps[0].dependent_configs.len(), 2);
-        
+
         // The two flavors should be indices 1 and 2 (base is index 0)
         assert!(common_deps[0].dependent_configs.contains(&1));
         assert!(common_deps[0].dependent_configs.contains(&2));
@@ -612,12 +643,12 @@ mod tests {
     #[test]
     fn test_extract_common_dependencies_across_app_flavors() {
         use crate::types::{AppConfig, FlavorConfig, MultiAppConfig};
-        
+
         // Create config matching the example from the comment:
         // Two apps (a and b), each with night and day flavors
         // Both night flavors share ./night/src/main/res
         // Both day flavors share ./day/src/main/res
-        
+
         let app_a = AppConfig {
             base_dir: Some(PathBuf::from("./a/src/main")),
             resource_dir: None,
@@ -720,10 +751,10 @@ mod tests {
 
         // Convert to BuildConfigs
         let configs = multi_config.into_build_configs();
-        
+
         // Should have 4 configs: 2 apps × 2 flavors each
         assert_eq!(configs.len(), 4);
-        
+
         // Extract common dependencies
         let common_deps = extract_common_dependencies(&configs);
 
@@ -731,14 +762,24 @@ mod tests {
         // - ./night/src/main/res (used by app_a.night and app_b.night)
         // - ./day/src/main/res (used by app_a.day and app_b.day)
         assert_eq!(common_deps.len(), 2);
-        
+
         // Check that both night and day resources are found
-        let night_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./night/src/main/res"));
-        let day_dep = common_deps.iter().find(|d| d.resource_dir == PathBuf::from("./day/src/main/res"));
-        
-        assert!(night_dep.is_some(), "Should find ./night/src/main/res as common dependency");
-        assert!(day_dep.is_some(), "Should find ./day/src/main/res as common dependency");
-        
+        let night_dep = common_deps
+            .iter()
+            .find(|d| d.resource_dir == PathBuf::from("./night/src/main/res"));
+        let day_dep = common_deps
+            .iter()
+            .find(|d| d.resource_dir == PathBuf::from("./day/src/main/res"));
+
+        assert!(
+            night_dep.is_some(),
+            "Should find ./night/src/main/res as common dependency"
+        );
+        assert!(
+            day_dep.is_some(),
+            "Should find ./day/src/main/res as common dependency"
+        );
+
         // Each common dependency should be used by 2 configs
         assert_eq!(night_dep.unwrap().dependent_configs.len(), 2);
         assert_eq!(day_dep.unwrap().dependent_configs.len(), 2);
