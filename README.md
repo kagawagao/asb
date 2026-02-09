@@ -18,6 +18,28 @@
 
 ## Installation / 安装
 
+### 下载预编译二进制文件（推荐）
+
+从 [Releases 页面](https://github.com/kagawagao/asb/releases) 下载适合您系统的预编译二进制文件：
+
+- **Linux**: `asb-linux-x86_64` (x64) 或 `asb-linux-aarch64` (ARM64)
+- **Debian 11**: `asb-debian11-x86_64` (x64, 兼容旧版 glibc)
+- **macOS**: `asb-macos-x86_64` (Intel) 或 `asb-macos-aarch64` (Apple Silicon)
+- **Windows**: `asb-windows-x86_64.exe` (x64) 或 `asb-windows-aarch64.exe` (ARM64)
+
+解压并添加到 PATH：
+
+```bash
+# Linux/macOS (示例: x86_64)
+tar xzf asb-linux-x86_64.tar.gz
+sudo mv asb-linux-x86_64 /usr/local/bin/asb
+sudo chmod +x /usr/local/bin/asb
+
+# Windows (示例: x64)
+# 解压 asb-windows-x86_64.zip
+# 将 asb-windows-x86_64.exe 移动到 PATH 中的目录
+```
+
 ### 从源码编译
 
 ```bash
@@ -647,6 +669,29 @@ cargo fmt
 
 ```bash
 cargo clippy
+```
+
+### CI/CD
+
+The project includes GitHub Actions workflows for continuous integration and deployment:
+
+- **Build Workflow** (`.github/workflows/build.yml`): 
+  - Automatically builds binaries for multiple platforms on every push and pull request
+  - Platforms: Linux (x64, ARM64), Debian 11 (x64), macOS (x64, ARM64), Windows (x64, ARM64)
+  - Tests binary execution on each platform
+  - Uploads artifacts for each build
+
+- **Release Workflow** (`.github/workflows/release.yml`):
+  - Triggers on version tags (e.g., `v2.0.0`)
+  - Builds binaries for all platforms
+  - Creates compressed archives (`.tar.gz` for Unix, `.zip` for Windows)
+  - Automatically creates a GitHub release with all binaries attached
+
+To create a new release:
+
+```bash
+git tag v2.0.1
+git push origin v2.0.1
 ```
 
 ## License
