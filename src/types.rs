@@ -4,6 +4,45 @@ use std::time::Duration;
 
 use crate::aapt2::DEFAULT_PACKAGE_ID;
 
+/// Find the highest version android.jar in ANDROID_HOME/platforms
+/// Returns None if ANDROID_HOME is not set or no android.jar is found
+fn find_highest_android_jar() -> Option<PathBuf> {
+    let android_home = std::env::var("ANDROID_HOME").ok()?;
+    let platforms_dir = PathBuf::from(android_home).join("platforms");
+
+    if !platforms_dir.exists() {
+        return None;
+    }
+
+    // Read all platform directories and extract version numbers
+    let mut versions: Vec<(u32, PathBuf)> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&platforms_dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    let dir_name = entry.file_name();
+                    let dir_name_str = dir_name.to_string_lossy();
+
+                    // Extract version from "android-XX" format
+                    if let Some(version_str) = dir_name_str.strip_prefix("android-") {
+                        if let Ok(version) = version_str.parse::<u32>() {
+                            let android_jar = entry.path().join("android.jar");
+                            if android_jar.exists() {
+                                versions.push((version, android_jar));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by version and return the highest
+    versions.sort_by_key(|(v, _)| *v);
+    versions.last().map(|(_, path)| path.clone())
+}
+
 /// Loaded configurations with metadata
 #[derive(Debug, Clone)]
 pub struct LoadedConfigs {
@@ -142,9 +181,10 @@ pub struct MultiAppConfig {
     #[serde(rename = "outputFile", skip_serializing_if = "Option::is_none")]
     pub output_file: Option<String>,
 
-    /// Common Android platform JAR path
-    #[serde(rename = "androidJar")]
-    pub android_jar: PathBuf,
+    /// Common Android platform JAR path (optional)
+    /// If not specified, will auto-detect the highest version from ANDROID_HOME/platforms
+    #[serde(rename = "androidJar", skip_serializing_if = "Option::is_none")]
+    pub android_jar: Option<PathBuf>,
 
     /// Common aapt2 path (optional)
     #[serde(rename = "aapt2Path", skip_serializing_if = "Option::is_none")]
@@ -269,7 +309,7 @@ impl MultiAppConfig {
         common_base_dir: &Option<PathBuf>,
         common_output_dir: &PathBuf,
         common_output_file: &Option<String>,
-        common_android_jar: &PathBuf,
+        common_android_jar: &Option<PathBuf>,
         common_aapt2_path: &Option<PathBuf>,
         common_aar_files: &Option<Vec<PathBuf>>,
         common_incremental: Option<bool>,
@@ -336,7 +376,7 @@ impl MultiAppConfig {
         common_base_dir: &Option<PathBuf>,
         common_output_dir: &PathBuf,
         common_output_file: &Option<String>,
-        common_android_jar: &PathBuf,
+        common_android_jar: &Option<PathBuf>,
         common_aapt2_path: &Option<PathBuf>,
         common_aar_files: &Option<Vec<PathBuf>>,
         common_incremental: Option<bool>,
@@ -455,9 +495,10 @@ pub struct BuildConfig {
     #[serde(rename = "aapt2Path", skip_serializing_if = "Option::is_none")]
     pub aapt2_path: Option<PathBuf>,
 
-    /// Path to Android platform JAR (android.jar)
-    #[serde(rename = "androidJar")]
-    pub android_jar: PathBuf,
+    /// Path to Android platform JAR (android.jar) (optional)
+    /// If not specified, will auto-detect the highest version from ANDROID_HOME/platforms
+    #[serde(rename = "androidJar", skip_serializing_if = "Option::is_none")]
+    pub android_jar: Option<PathBuf>,
 
     /// Additional AAR files to include resources from
     #[serde(rename = "aarFiles", skip_serializing_if = "Option::is_none", default)]
@@ -518,20 +559,13 @@ pub struct BuildConfig {
 impl BuildConfig {
     /// Create default configuration based on standard Android project structure
     pub fn default_config() -> Self {
-        // Try to find ANDROID_HOME for android.jar
-        let android_jar = if let Ok(android_home) = std::env::var("ANDROID_HOME") {
-            PathBuf::from(android_home).join("platforms/android-34/android.jar")
-        } else {
-            PathBuf::from("${ANDROID_HOME}/platforms/android-34/android.jar")
-        };
-
         Self {
             resource_dir: PathBuf::from("./src/main/res"),
             manifest_path: PathBuf::from("./src/main/AndroidManifest.xml"),
             output_dir: PathBuf::from("./build/outputs/skin"),
             output_file: None,
             package_name: "com.example.skin".to_string(),
-            android_jar,
+            android_jar: None,
             aar_files: None,
             aapt2_path: None,
             incremental: Some(true),
@@ -579,8 +613,16 @@ impl BuildConfig {
         self.manifest_path =
             PathBuf::from(Self::expand_env_vars(&self.manifest_path.to_string_lossy()));
         self.output_dir = PathBuf::from(Self::expand_env_vars(&self.output_dir.to_string_lossy()));
-        self.android_jar =
-            PathBuf::from(Self::expand_env_vars(&self.android_jar.to_string_lossy()));
+        if let Some(android_jar) = &self.android_jar {
+            self.android_jar = Some(PathBuf::from(Self::expand_env_vars(
+                &android_jar.to_string_lossy(),
+            )));
+        }
+
+        // If android_jar is still None after expansion, try to auto-detect
+        if self.android_jar.is_none() {
+            self.android_jar = find_highest_android_jar();
+        }
 
         if let Some(aapt2) = &self.aapt2_path {
             self.aapt2_path = Some(PathBuf::from(Self::expand_env_vars(

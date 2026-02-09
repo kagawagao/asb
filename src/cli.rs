@@ -301,7 +301,7 @@ impl Cli {
                     build_config.package_name = p.clone();
                 }
                 if let Some(ref aj) = android_jar {
-                    build_config.android_jar = aj.clone();
+                    build_config.android_jar = Some(aj.clone());
                 }
                 if !aar.is_empty() {
                     build_config.aar_files = Some(aar.clone());

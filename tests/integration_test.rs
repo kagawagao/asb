@@ -189,7 +189,7 @@ fn test_multi_app_config_object_format() {
     assert_eq!(multi_config.output_dir, PathBuf::from("./build"));
     assert_eq!(
         multi_config.android_jar,
-        PathBuf::from("/path/to/android.jar")
+        Some(PathBuf::from("/path/to/android.jar"))
     );
     assert_eq!(multi_config.incremental, Some(true));
     assert_eq!(multi_config.version_code, Some(1));
@@ -205,7 +205,7 @@ fn test_multi_app_config_object_format() {
     assert_eq!(configs[0].output_dir, PathBuf::from("./build"));
     assert_eq!(
         configs[0].android_jar,
-        PathBuf::from("/path/to/android.jar")
+        Some(PathBuf::from("/path/to/android.jar"))
     );
     assert_eq!(configs[0].incremental, Some(true));
 

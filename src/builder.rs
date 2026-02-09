@@ -407,11 +407,15 @@ impl SkinBuilder {
 
         let output_apk = self.config.output_dir.join(output_filename);
 
+        // Ensure android_jar is set
+        let android_jar = self.config.android_jar.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("android_jar not set. Please configure it or ensure ANDROID_HOME is set."))?;
+
         let link_result = self.aapt2.link_with_overlays(
             &base_flat_files,
             &overlay_flat_files,
             &processed_manifest,
-            &self.config.android_jar,
+            android_jar,
             &output_apk,
             Some(&self.config.package_name),
             self.config.version_code,
@@ -804,7 +808,7 @@ mod tests {
             output_file: None,
             package_name: "com.test".to_string(),
             aapt2_path: None,
-            android_jar: PathBuf::from("/fake/android.jar"),
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
             build_dir: None,
@@ -880,7 +884,7 @@ mod tests {
             output_file: None,
             package_name: "com.test".to_string(),
             aapt2_path: None,
-            android_jar: PathBuf::from("/fake/android.jar"),
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
             build_dir: None,
@@ -946,7 +950,7 @@ mod tests {
             output_file: None,
             package_name: "com.test.builddir".to_string(),
             aapt2_path: None,
-            android_jar: PathBuf::from("/fake/android.jar"),
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
             build_dir: Some(build_dir.clone()),
@@ -1009,7 +1013,7 @@ mod tests {
             output_file: None,
             package_name: "com.test.default".to_string(),
             aapt2_path: None,
-            android_jar: PathBuf::from("/fake/android.jar"),
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
             build_dir: None, // Not specified - should default
