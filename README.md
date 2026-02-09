@@ -23,6 +23,7 @@
 从 [Releases 页面](https://github.com/kagawagao/asb/releases) 下载适合您系统的预编译二进制文件：
 
 - **Linux**: `asb-linux-x86_64` (x64) 或 `asb-linux-aarch64` (ARM64)
+- **Debian 11**: `asb-debian11-x86_64` (x64, 兼容旧版 glibc)
 - **macOS**: `asb-macos-x86_64` (Intel) 或 `asb-macos-aarch64` (Apple Silicon)
 - **Windows**: `asb-windows-x86_64.exe` (x64) 或 `asb-windows-aarch64.exe` (ARM64)
 
@@ -676,7 +677,7 @@ The project includes GitHub Actions workflows for continuous integration and dep
 
 - **Build Workflow** (`.github/workflows/build.yml`): 
   - Automatically builds binaries for multiple platforms on every push and pull request
-  - Platforms: Linux (x64, ARM64), macOS (x64, ARM64), Windows (x64, ARM64)
+  - Platforms: Linux (x64, ARM64), Debian 11 (x64), macOS (x64, ARM64), Windows (x64, ARM64)
   - Tests binary execution on each platform
   - Uploads artifacts for each build
 

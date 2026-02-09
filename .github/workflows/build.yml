@@ -14,6 +14,7 @@ jobs:
   build:
     name: Build on ${{ matrix.os }} - ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +28,12 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact_name: asb
             asset_name: asb-linux-aarch64
+          # Debian 11 build (older glibc compatibility)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            container: debian:11
+            artifact_name: asb
+            asset_name: asb-debian11-x86_64
           # macOS builds
           - os: macos-latest
             target: x86_64-apple-darwin
@@ -47,6 +54,12 @@ jobs:
             asset_name: asb-windows-aarch64.exe
 
     steps:
+    - name: Install dependencies (Debian 11 container)
+      if: matrix.container == 'debian:11'
+      run: |
+        apt-get update
+        apt-get install -y curl gcc pkg-config libssl-dev git ca-certificates
+
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -56,7 +69,7 @@ jobs:
         targets: ${{ matrix.target }}
 
     - name: Install cross-compilation tools (Linux ARM64)
-      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      if: matrix.target == 'aarch64-unknown-linux-gnu' && matrix.container != 'debian:11'
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-aarch64-linux-gnu
