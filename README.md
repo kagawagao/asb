@@ -102,6 +102,7 @@ asb build
 ```
 
 **优势**：
+
 - 公共配置只需定义一次
 - 自动并行构建独立的应用
 - 支持依赖关系的顺序构建
@@ -328,6 +329,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
   "resourceDir": "./res",
   "manifestPath": "./AndroidManifest.xml",
   "outputDir": "./build",
+  "buildDir": "./build/.build",
   "packageName": "com.example.skin",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "aarFiles": ["./libs/library1.aar"],
@@ -350,6 +352,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
 {
   "baseDir": "./",
   "outputDir": "./build",
+  "buildDir": "./build/.build",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
   "incremental": true,
   "versionCode": 1,
@@ -406,84 +409,96 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
 
 #### 单应用配置选项
 
-| Option                   | Type     | Required | Description                                             |
-| ------------------------ | -------- | -------- | ------------------------------------------------------- |
-| `resourceDir`            | string   | Yes*     | 资源目录路径（使用 baseDir 时可选）                      |
-| `manifestPath`           | string   | No       | AndroidManifest.xml 路径（可省略，自动生成）              |
-| `outputDir`              | string   | Yes      | 输出目录                                                |
-| `packageName`            | string   | Yes      | 包名                                                    |
-| `androidJar`             | string   | Yes      | android.jar 路径，支持 `${ANDROID_HOME}` 环境变量        |
-| `baseDir`                | string   | No       | 基础目录，自动推导 resourceDir 和 manifestPath           |
-| `aarFiles`               | string[] | No       | AAR 文件列表                                            |
-| `aapt2Path`              | string   | No       | aapt2 路径（自动检测）                                  |
-| `incremental`            | boolean  | No       | 启用增量构建（默认 false）                              |
-| `cacheDir`               | string   | No       | 缓存目录（默认 outputDir/.build-cache）                 |
-| `versionCode`            | number   | No       | 版本号                                                  |
-| `versionName`            | string   | No       | 版本名称                                                |
-| `additionalResourceDirs` | string[] | No       | 额外的资源目录（用于资源覆盖）                           |
-| `stableIdsFile`          | string   | No       | stable IDs 文件路径，用于保持资源 ID 稳定               |
-| `packageId`              | string   | No       | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"） |
-| `outputFile`             | string   | No       | 自定义输出文件名（默认为 `{packageName}.skin`）          |
+| Option                   | Type     | Required | Description                                                   |
+| ------------------------ | -------- | -------- | ------------------------------------------------------------- |
+| `resourceDir`            | string   | Yes\*    | 资源目录路径（使用 baseDir 时可选）                           |
+| `manifestPath`           | string   | No       | AndroidManifest.xml 路径（可省略，自动生成）                  |
+| `outputDir`              | string   | Yes      | 输出目录                                                      |
+| `packageName`            | string   | Yes      | 包名                                                          |
+| `androidJar`             | string   | Yes      | android.jar 路径，支持 `${ANDROID_HOME}` 环境变量             |
+| `baseDir`                | string   | No       | 基础目录，自动推导 resourceDir 和 manifestPath                |
+| `aarFiles`               | string[] | No       | AAR 文件列表                                                  |
+| `aapt2Path`              | string   | No       | aapt2 路径（自动检测）                                        |
+| `incremental`            | boolean  | No       | 启用增量构建（默认 false）                                    |
+| `buildDir`               | string   | No       | 构建目录，用于存放中间文件和缓存（默认 `{outputDir}/.build`） |
+| `cacheDir`               | string   | No       | 缓存目录（已废弃，推荐使用 buildDir）                         |
+| `versionCode`            | number   | No       | 版本号                                                        |
+| `versionName`            | string   | No       | 版本名称                                                      |
+| `additionalResourceDirs` | string[] | No       | 额外的资源目录（用于资源覆盖）                                |
+| `stableIdsFile`          | string   | No       | stable IDs 文件路径，用于保持资源 ID 稳定                     |
+| `packageId`              | string   | No       | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"）       |
+| `outputFile`             | string   | No       | 自定义输出文件名（默认为 `{packageName}.skin`）               |
 
 #### 多应用配置选项
 
 **顶层公共配置**：
 
-| Option              | Type     | Required | Description                                    |
-| ------------------- | -------- | -------- | ---------------------------------------------- |
-| `apps`              | array    | Yes      | 应用配置数组                                   |
-| `outputDir`         | string   | Yes      | 公共输出目录                                   |
-| `androidJar`        | string   | Yes      | 公共 android.jar 路径                          |
-| `baseDir`           | string   | No       | 公共基础目录                                   |
-| `incremental`       | boolean  | No       | 公共增量构建设置                               |
-| `versionCode`       | number   | No       | 公共版本号（可被应用级配置覆盖）               |
-| `versionName`       | string   | No       | 公共版本名称（可被应用级配置覆盖）             |
-| `packageId`         | string   | No       | 公共资源包 ID（可被应用级配置覆盖）            |
-| `maxParallelBuilds` | number   | No       | 最大并行构建数（默认为 CPU 核心数）            |
-| `aarFiles`          | string[] | No       | 公共 AAR 文件列表                              |
-| `aapt2Path`         | string   | No       | 公共 aapt2 路径                                |
-| `cacheDir`          | string   | No       | 公共缓存目录                                   |
-| `stableIdsFile`     | string   | No       | 公共 stable IDs 文件                           |
+| Option              | Type     | Required | Description                                                       |
+| ------------------- | -------- | -------- | ----------------------------------------------------------------- |
+| `apps`              | array    | Yes      | 应用配置数组                                                      |
+| `outputDir`         | string   | Yes      | 公共输出目录                                                      |
+| `androidJar`        | string   | Yes      | 公共 android.jar 路径                                             |
+| `baseDir`           | string   | No       | 公共基础目录                                                      |
+| `incremental`       | boolean  | No       | 公共增量构建设置                                                  |
+| `buildDir`          | string   | No       | 公共构建目录，用于存放中间文件和缓存（默认 `{outputDir}/.build`） |
+| `cacheDir`          | string   | No       | 公共缓存目录（已废弃，推荐使用 buildDir）                         |
+| `versionCode`       | number   | No       | 公共版本号（可被应用级配置覆盖）                                  |
+| `versionName`       | string   | No       | 公共版本名称（可被应用级配置覆盖）                                |
+| `packageId`         | string   | No       | 公共资源包 ID（可被应用级配置覆盖）                               |
+| `maxParallelBuilds` | number   | No       | 最大并行构建数（默认为 CPU 核心数）                               |
+| `aarFiles`          | string[] | No       | 公共 AAR 文件列表                                                 |
+| `aapt2Path`         | string   | No       | 公共 aapt2 路径                                                   |
+| `stableIdsFile`     | string   | No       | 公共 stable IDs 文件                                              |
 
 **应用级配置（apps 数组中的每个项）**：
 
-| Option                   | Type     | Required | Description                                |
-| ------------------------ | -------- | -------- | ------------------------------------------ |
-| `packageName`            | string   | Yes      | 应用包名                                   |
-| `baseDir`                | string   | No       | 应用特定基础目录                           |
-| `resourceDir`            | string   | No       | 应用特定资源目录                           |
-| `manifestPath`           | string   | No       | 应用特定 manifest 路径                     |
-| `outputDir`              | string   | No       | 应用特定输出目录（覆盖公共配置）           |
-| `outputFile`             | string   | No       | 应用特定输出文件名                         |
-| `additionalResourceDirs` | string[] | No       | 应用特定额外资源目录                       |
-| `versionCode`            | number   | No       | 应用特定版本号（覆盖公共配置）             |
-| `versionName`            | string   | No       | 应用特定版本名称（覆盖公共配置）           |
-| `packageId`              | string   | No       | 应用特定资源包 ID（覆盖公共配置）          |
-| `flavors`                | array    | No       | 应用的产品变体配置数组                     |
+| Option                   | Type     | Required | Description                       |
+| ------------------------ | -------- | -------- | --------------------------------- |
+| `packageName`            | string   | Yes      | 应用包名                          |
+| `baseDir`                | string   | No       | 应用特定基础目录                  |
+| `resourceDir`            | string   | No       | 应用特定资源目录                  |
+| `manifestPath`           | string   | No       | 应用特定 manifest 路径            |
+| `outputDir`              | string   | No       | 应用特定输出目录（覆盖公共配置）  |
+| `outputFile`             | string   | No       | 应用特定输出文件名                |
+| `additionalResourceDirs` | string[] | No       | 应用特定额外资源目录              |
+| `versionCode`            | number   | No       | 应用特定版本号（覆盖公共配置）    |
+| `versionName`            | string   | No       | 应用特定版本名称（覆盖公共配置）  |
+| `packageId`              | string   | No       | 应用特定资源包 ID（覆盖公共配置） |
+| `flavors`                | array    | No       | 应用的产品变体配置数组            |
 
 **Flavor 配置选项**：
 
-| Option                   | Type     | Required | Description                        |
-| ------------------------ | -------- | -------- | ---------------------------------- |
-| `name`                   | string   | Yes      | Flavor 名称                        |
-| `outputFile`             | string   | No       | Flavor 特定输出文件名              |
-| `additionalResourceDirs` | string[] | No       | Flavor 特定额外资源目录            |
-| `versionCode`            | number   | No       | Flavor 特定版本号                  |
-| `versionName`            | string   | No       | Flavor 特定版本名称                |
-| `packageId`              | string   | No       | Flavor 特定资源包 ID               |
+| Option                   | Type     | Required | Description             |
+| ------------------------ | -------- | -------- | ----------------------- |
+| `name`                   | string   | Yes      | Flavor 名称             |
+| `outputFile`             | string   | No       | Flavor 特定输出文件名   |
+| `additionalResourceDirs` | string[] | No       | Flavor 特定额外资源目录 |
+| `versionCode`            | number   | No       | Flavor 特定版本号       |
+| `versionName`            | string   | No       | Flavor 特定版本名称     |
+| `packageId`              | string   | No       | Flavor 特定资源包 ID    |
 
 ### 配置说明
 
 **baseDir 自动推导**：
+
 - 当指定 `baseDir` 时，如果未指定 `resourceDir`，则默认为 `{baseDir}/res`
 - 当指定 `baseDir` 时，如果未指定 `manifestPath`，则默认为 `{baseDir}/AndroidManifest.xml`
 - 这简化了标准 Android 项目结构的配置
 
 **manifestPath 可选**：
+
 - 从 ASB 2.0 开始，AndroidManifest.xml 可以省略
 - 工具会自动生成最小化的 manifest：`<manifest package="{packageName}" />`
 
+**buildDir 构建目录**：
+
+- `buildDir` 用于存放构建过程中的中间文件和缓存，与 `outputDir`（最终产物）区分开
+- 默认值：`{outputDir}/.build`
+- 中间文件包括：编译后的资源文件（.flat）、临时文件、构建缓存等
+- **注意**：`cacheDir` 已废弃，推荐使用 `buildDir`。如果同时指定了两者，`cacheDir` 优先用于缓存
+
 **环境变量支持**：
+
 - 配置文件中的路径支持环境变量展开，如 `${ANDROID_HOME}`
 - 示例：`"androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar"`
 
