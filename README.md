@@ -59,81 +59,19 @@ asb init
 asb build
 ```
 
-**简单配置示例**（使用 baseDir 自动推导路径）：
+**配置示例**：
 
 ```json
 {
   "resourceDir": "./res",
-  "manifestPath": "./AndroidManifest.xml",
   "outputDir": "./build",
   "packageName": "com.example.skin",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
-  "incremental": true,
-  "versionCode": 1,
-  "versionName": "1.0.0"
+  "incremental": true
 }
 ```
 
-**注意**：ASB 会自动生成最小化的 AndroidManifest.xml，因此 `manifestPath` 可以省略。
-
-#### 多应用配置
-
-支持在一个配置文件中构建多个应用的皮肤包：
-
-```json
-{
-  "baseDir": "./",
-  "outputDir": "./build",
-  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
-  "incremental": true,
-  "versionCode": 1,
-  "versionName": "1.0.0",
-  "apps": [
-    {
-      "baseDir": "./app1",
-      "packageName": "com.example.skin.app1"
-    },
-    {
-      "baseDir": "./app2",
-      "packageName": "com.example.skin.app2"
-    }
-  ]
-}
-```
-
-**优势**：
-
-- 公共配置只需定义一次
-- 自动并行构建独立的应用
-- 支持依赖关系的顺序构建
-
-#### Flavors 配置（产品变体）
-
-支持为同一应用构建多个变体（如 free/pro，debug/release）：
-
-```json
-{
-  "outputDir": "./build",
-  "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
-  "apps": [
-    {
-      "baseDir": "./",
-      "packageName": "com.example.skin.myapp",
-      "flavors": [
-        {
-          "name": "free",
-          "outputFile": "myapp-free.skin"
-        },
-        {
-          "name": "pro",
-          "outputFile": "myapp-pro.skin",
-          "versionCode": 2
-        }
-      ]
-    }
-  ]
-}
-```
+更多配置选项（多应用、Flavors、资源优先级等）请参见 [Configuration](#configuration--配置) 章节。
 
 ### Option 2: 命令行参数
 
@@ -167,26 +105,6 @@ ASB 按以下优先级加载配置：
 
 ### 项目结构
 
-**标准 Android 项目结构**（推荐，使用 baseDir）：
-
-```
-project/
-├── app1/
-│   ├── res/
-│   │   ├── values/
-│   │   │   └── colors.xml
-│   │   └── drawable/
-│   │       └── icon.png
-│   └── AndroidManifest.xml (可选)
-├── app2/
-│   └── res/
-│       └── values/
-│           └── colors.xml
-└── asb.config.json
-```
-
-**传统单应用结构**：
-
 ```
 project/
 ├── res/
@@ -194,11 +112,10 @@ project/
 │   │   └── colors.xml
 │   └── drawable/
 │       └── icon.png
-├── AndroidManifest.xml (可选)
 └── asb.config.json
 ```
 
-**注意**：从 ASB 2.0 开始，AndroidManifest.xml 可以省略，工具会自动生成最小化的 manifest 文件。
+**注意**：AndroidManifest.xml 可以省略，工具会自动生成。更多结构示例请参见 [Examples](#examples--示例) 章节。
 
 ## Usage / 使用方法
 
@@ -646,26 +563,12 @@ asb build --config skin-theme.json --stable-ids stable-ids.txt
 利用并发编译和增量构建加速开发：
 
 ```bash
-asb build --config asb.config.json --incremental --workers 16
+asb build --config asb.config.json --incremental --max-parallel-builds 8
 ```
 
 ### 3. 多层资源覆盖
 
-使用资源优先级特性实现主题定制：
-
-```bash
-# 基础资源 + 深色主题 + 自定义品牌
-asb build --config multi-layer-theme.json
-```
-
-配置示例：
-
-```json
-{
-  "resourceDir": "./base/res",
-  "additionalResourceDirs": ["./themes/dark/res", "./branding/custom/res"]
-}
-```
+使用资源优先级特性实现主题定制，详见 [Resource Priority](#resource-priority--资源优先级) 章节。
 
 ## Architecture / 架构
 
@@ -714,10 +617,10 @@ asb build --aapt2 /path/to/aapt2 ...
 
 ### 并发问题
 
-如果遇到并发相关问题，可以限制工作线程数：
+如果遇到并发相关问题，可以限制并行构建数：
 
 ```bash
-asb build --config asb.config.json --workers 1
+asb build --config asb.config.json --max-parallel-builds 1
 ```
 
 ## Development / 开发
