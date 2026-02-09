@@ -109,9 +109,4 @@ jobs:
 
     - name: Test binary execution
       shell: bash
-      run: |
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          ./${{ matrix.artifact }} --version
-        else
-          ./${{ matrix.artifact }} --version
-        fi
+      run: ./${{ matrix.artifact }} --version
