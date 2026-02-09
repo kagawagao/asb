@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::{error, info, warn};
 
 use crate::aapt2::Aapt2;
@@ -367,7 +367,6 @@ impl Cli {
             // Single configuration mode - keep backward compatibility
             let config = build_configs.into_iter().next().unwrap();
             let package_name = config.package_name.clone();
-            let output_dir = config.output_dir.clone();
             println!("{}", "\nBuilding skin package...\n".blue().bold());
             let start_time = std::time::Instant::now();
             let mut builder = SkinBuilder::new(config)?;
@@ -397,7 +396,7 @@ impl Cli {
                 }
 
                 // Save failure log
-                match Self::save_failure_log(&package_name, &result.errors, &output_dir) {
+                match Self::save_failure_log(&package_name, &result.errors) {
                     Ok(log_path) => {
                         println!("\n  {}: {}", "Log saved to".yellow(), log_path.display());
                     }
@@ -704,12 +703,8 @@ impl Cli {
                         println!("      - {}", error);
                     }
                     // Save failure log
-                    if let Some(config) = original_configs.get(*idx) {
-                        match Self::save_failure_log(
-                            package_name,
-                            &result.errors,
-                            &config.output_dir,
-                        ) {
+                    if let Some(_config) = original_configs.get(*idx) {
+                        match Self::save_failure_log(package_name, &result.errors) {
                             Ok(log_path) => {
                                 println!(
                                     "      {}: {}",
@@ -738,15 +733,11 @@ impl Cli {
         builder.build().await
     }
 
-    fn save_failure_log(
-        package_name: &str,
-        errors: &[String],
-        output_dir: &Path,
-    ) -> Result<PathBuf> {
+    fn save_failure_log(package_name: &str, errors: &[String]) -> Result<PathBuf> {
         use std::io::Write;
 
-        // Create logs directory if it doesn't exist
-        let logs_dir = output_dir.join(".logs");
+        // Create logs directory in current working directory
+        let logs_dir = PathBuf::from("./logs");
         std::fs::create_dir_all(&logs_dir)?;
 
         // Generate log file name with timestamp
