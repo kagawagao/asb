@@ -1,0 +1,117 @@
+name: Build Multi-Platform Binaries
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }} - ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: asb
+            asset_name: asb-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: asb
+            asset_name: asb-linux-aarch64
+          # macOS builds
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: asb
+            asset_name: asb-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: asb
+            asset_name: asb-macos-aarch64
+          # Windows builds
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: asb.exe
+            asset_name: asb-windows-x86_64.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact_name: asb.exe
+            asset_name: asb-windows-aarch64.exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Install cross-compilation tools (Linux ARM64)
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ matrix.target }}
+
+    - name: Build binary
+      run: cargo build --release --target ${{ matrix.target }}
+
+    - name: Rename binary
+      shell: bash
+      run: |
+        cd target/${{ matrix.target }}/release
+        if [ -f "${{ matrix.artifact_name }}" ]; then
+          cp ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.asset_name }}
+        path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
+        if-no-files-found: error
+
+  test-binaries:
+    name: Test binary on ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: asb-linux-x86_64
+          - os: macos-latest
+            artifact: asb-macos-x86_64
+          - os: windows-latest
+            artifact: asb-windows-x86_64.exe
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: .
+
+    - name: Make binary executable (Unix)
+      if: runner.os != 'Windows'
+      run: chmod +x ${{ matrix.artifact }}
+
+    - name: Test binary execution
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          ./${{ matrix.artifact }} --version
+        else
+          ./${{ matrix.artifact }} --version
+        fi
