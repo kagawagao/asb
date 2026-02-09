@@ -59,6 +59,13 @@ sudo cp target/release/asb /usr/local/bin/
 # 将 target\release\asb.exe 复制到 PATH 中的目录
 ```
 
+### 系统兼容性说明
+
+**Linux 用户请注意：**
+- 如果您的系统使用较旧的 glibc 版本（如 Ubuntu 20.04、Debian 11 等使用 glibc 2.31），请下载 Debian 11 版本的二进制文件（`asb-debian11-x86_64` 或 `asb-debian11-aarch64`）
+- 较新的系统（Ubuntu 22.04+ 等）可以使用标准的 Linux 版本（`asb-linux-x86_64` 或 `asb-linux-aarch64`）
+- 如果不确定您的 glibc 版本，可以运行 `ldd --version` 查看
+
 ## Prerequisites / 前置条件
 
 1. **Android SDK**: 需要安装 Android SDK 并配置 `ANDROID_HOME` 环境变量
@@ -677,7 +684,7 @@ The project includes GitHub Actions workflows for continuous integration and dep
 
 - **Build Workflow** (`.github/workflows/build.yml`): 
   - Automatically builds binaries for multiple platforms on every push and pull request
-  - Platforms: Linux (x64, ARM64), Debian 11 (x64), macOS (x64, ARM64), Windows (x64, ARM64)
+  - Platforms: Linux (x64, ARM64), Debian 11 with glibc 2.31 (x64, ARM64), macOS (x64, ARM64), Windows (x64, ARM64)
   - Tests binary execution on each platform
   - Uploads artifacts for each build
 
