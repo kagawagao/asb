@@ -23,7 +23,7 @@
 从 [Releases 页面](https://github.com/kagawagao/asb/releases) 下载适合您系统的预编译二进制文件：
 
 - **Linux**: `asb-linux-x86_64` (x64) 或 `asb-linux-aarch64` (ARM64)
-- **Debian 11**: `asb-debian11-x86_64` (x64, 兼容旧版 glibc)
+- **Debian 11 (glibc 2.31)**: `asb-debian11-x86_64` (x64) 或 `asb-debian11-aarch64` (ARM64)
 - **macOS**: `asb-macos-x86_64` (Intel) 或 `asb-macos-aarch64` (Apple Silicon)
 - **Windows**: `asb-windows-x86_64.exe` (x64) 或 `asb-windows-aarch64.exe` (ARM64)
 
