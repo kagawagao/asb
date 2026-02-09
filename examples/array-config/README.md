@@ -71,3 +71,24 @@ The build will generate two skin packages in the `build` directory:
 
 - `com.example.skin.app1.skin`
 - `com.example.skin.app2.skin`
+
+## Project Structure
+
+```
+array-config/
+├── asb.config.json
+├── app1/
+│   ├── AndroidManifest.xml
+│   └── res/
+│       └── values/
+│           ├── colors.xml    # Theme colors for app1
+│           └── strings.xml   # App1 strings
+└── app2/
+    ├── AndroidManifest.xml
+    └── res/
+        └── values/
+            ├── colors.xml    # Theme colors for app2
+            └── strings.xml   # App2 strings
+```
+
+Each app has its own color scheme and string resources, demonstrating how to build multiple independent skin packages with a single configuration.

@@ -39,11 +39,13 @@ The `asb.config.json` file uses an object format with common fields at the top l
 ## New Features Demonstrated
 
 ### baseDir Configuration
+
 - Each app specifies only `baseDir` instead of explicit `resourceDir` and `manifestPath`
 - `resourceDir` automatically becomes `$baseDir/res`
 - `manifestPath` automatically becomes `$baseDir/AndroidManifest.xml`
 
 ### outputFile Configuration
+
 - Custom output file names specified per app: `base.skin`, `feature1.skin`, `feature2.skin`
 - Without this, outputs would default to `{packageName}.skin`
 - Combined with `outputDir` to determine full output path
@@ -67,6 +69,34 @@ asb build
 ## Output
 
 The build will generate three skin packages in the `build` directory with custom names:
+
 - `base.skin`
 - `feature1.skin`
 - `feature2.skin`
+
+## Project Structure
+
+```
+array-config-deps/
+├── asb.config.json
+├── base/
+│   ├── AndroidManifest.xml
+│   └── res/
+│       └── values/
+│           ├── colors.xml    # Base theme colors
+│           └── strings.xml   # Base strings
+├── feature1/
+│   ├── AndroidManifest.xml
+│   └── res/
+│       └── values/
+│           ├── colors.xml    # Feature1-specific colors
+│           └── strings.xml   # Feature1 strings
+└── feature2/
+    ├── AndroidManifest.xml
+    └── res/
+        └── values/
+            ├── colors.xml    # Feature2-specific colors
+            └── strings.xml   # Feature2 strings
+```
+
+This demonstrates how feature modules can depend on and include resources from a base module, with each module having its own color palette and strings.

@@ -38,6 +38,7 @@ The `asb.config.json` file shows how to define flavors:
 ### What are Flavors?
 
 Flavors allow you to create multiple variants of the same app from a single configuration. Each flavor:
+
 - Creates a separate build task
 - Can override any app-level configuration
 - Builds in parallel with other flavors for optimal performance
@@ -51,6 +52,7 @@ Flavors allow you to create multiple variants of the same app from a single conf
 ### Flavor Configuration Priority
 
 Values are resolved in this order (highest priority first):
+
 1. Flavor-specific value
 2. App-level value
 3. Common/top-level value
@@ -60,11 +62,13 @@ Values are resolved in this order (highest priority first):
 This configuration creates two build variants:
 
 ### Free Flavor
+
 - Package: `com.example.skin.myapp.free` (auto-generated)
 - Output: `myapp-free.skin`
 - Version: 1 (from common config)
 
 ### Pro Flavor
+
 - Package: `com.example.skin.myapp.pro` (auto-generated)
 - Output: `myapp-pro.skin`
 - Version: 2 (overridden)
@@ -83,12 +87,28 @@ This will build both free and pro flavors in parallel.
 ## Output
 
 The build will generate two skin packages in the `build` directory:
+
 - `myapp-free.skin`
 - `myapp-pro.skin`
+
+## Project Structure
+
+```
+flavors-example/
+├── asb.config.json
+├── AndroidManifest.xml
+└── res/
+    └── values/
+        ├── colors.xml    # Theme colors
+        └── strings.xml   # App strings
+```
+
+Both flavors share the same resources, but can be extended to have flavor-specific resource overlays if needed.
 
 ## Use Cases
 
 Flavors are useful for:
+
 - **Free vs Paid versions**: Different package names, resources, or configurations
 - **Environment variants**: dev, staging, production with different endpoints or settings
 - **Regional variants**: Different resources or configurations for different markets

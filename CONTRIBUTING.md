@@ -20,7 +20,9 @@ asb/
 │   ├── builder.rs        # Main build orchestration
 │   ├── cache.rs          # Incremental build cache
 │   ├── cli.rs            # CLI interface
-│   ├── merge.rs          # Multi-module merging
+│   ├── dependency.rs     # Multi-app dependency resolution
+│   ├── resource_priority.rs # Resource overlay and priority handling
+│   ├── merge.rs          # Internal package merging utilities
 │   ├── types.rs          # Type definitions
 │   └── main.rs           # Entry point
 ├── examples/
@@ -81,4 +83,3 @@ When reporting issues, please include:
 Feel free to open an issue for questions or discussions.
 
 Thank you for contributing!
-

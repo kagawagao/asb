@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="feature2_primary_color">#00BCD4</color>
+    <color name="feature2_accent_color">#009688</color>
+    <color name="feature2_text_color">#212121</color>
+</resources>

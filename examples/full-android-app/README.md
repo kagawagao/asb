@@ -44,7 +44,7 @@ full-android-app/
 
 ## Building the Application
 
-ASB builds skin packages at the application level, automatically including resources from all feature modules and their dependencies.
+ASB allows you to build a unified skin package that includes resources from all feature modules using the `additionalResourceDirs` configuration.
 
 ### 1. Build from Root
 
@@ -57,7 +57,7 @@ cargo build --release
 
 ### 2. Build Application Skin Package
 
-Build the entire application with all its resources:
+Build a unified skin package including all module resources:
 
 ```bash
 cd examples/full-android-app
@@ -69,16 +69,18 @@ cd examples/full-android-app
   --android-jar $ANDROID_HOME/platforms/android-34/android.jar
 ```
 
+Note: This builds only the main app module. To include feature module resources, use the configuration file approach below.
+
 This creates `build/com.example.skinapp.app.skin` containing:
-- All resources from the app module
-- Automatically indexed dependent resources from feature modules
+
+- Resources from the app module (and feature modules if using config below)
 - resources.arsc (compiled resources)
 - AndroidManifest.xml
 - All XML resource files (layouts, values, etc.)
 
-### 3. Using Configuration File
+### 3. Using Configuration File (Recommended)
 
-Create an `asb.config.json` for the app:
+The recommended approach uses `asb.config.json` with `additionalResourceDirs` to include all feature module resources:
 
 ```json
 {
@@ -106,9 +108,9 @@ Then build with:
 
 ## Features Demonstrated
 
-- **Application-scoped packaging**: Build complete skin packages per application
-- **Automatic dependency resolution**: Resources from all modules are automatically included
-- **Resource organization**: Modular resource structure
+- **Multi-module resources**: Include resources from multiple modules using `additionalResourceDirs`
+- **Unified skin package**: Single package containing all module resources
+- **Resource organization**: Clean modular resource structure
 - **Color theming**: Module-specific color schemes
 - **Layouts**: Module-specific UI layouts
 - **Stable IDs**: Consistent resource IDs across builds (add `--stable-ids` flag)
@@ -127,16 +129,6 @@ Create a `stable-ids.txt` file to maintain consistent resource IDs:
   --stable-ids stable-ids.txt
 ```
 
-### With Custom Worker Count
-
-Control parallel compilation threads:
-
-```bash
-../../target/release/asb build \
-  --config asb.config.json \
-  --workers 16
-```
-
 ### With Third-Party Dependencies
 
 If your application references resources from AAR libraries:
@@ -148,14 +140,12 @@ If your application references resources from AAR libraries:
   "outputDir": "./build",
   "packageName": "com.example.skinapp.app",
   "androidJar": "${ANDROID_HOME}/platforms/android-34/android.jar",
-  "aarFiles": [
-    "./libs/support-lib.aar",
-    "./libs/material-components.aar"
-  ]
+  "aarFiles": ["./libs/support-lib.aar", "./libs/material-components.aar"]
 }
 ```
 
 The build process automatically:
+
 - Extracts AAR resources
 - Includes referenced resources in the skin package
 - Handles resource ID conflicts properly
@@ -171,7 +161,7 @@ This makes it easy to identify which application each skin package belongs to.
 
 ## Use Cases
 
-1. **Modular Applications**: Build skins for applications with multiple feature modules
+1. **Multi-Module Applications**: Include resources from multiple feature modules in a unified skin package
 2. **Dynamic Theming**: Update app theming without reinstalling
 3. **Hot Updates**: Distribute theme updates over-the-air
 4. **A/B Testing**: Distribute different themes to different user groups
@@ -181,6 +171,7 @@ This makes it easy to identify which application each skin package belongs to.
 
 - Ensure `ANDROID_HOME` environment variable is set
 - The application package name determines the output filename
-- All referenced resources (from feature modules, AARs, etc.) are automatically included
-- Resource names should be unique or properly namespaced
+- Use `additionalResourceDirs` to include resources from feature modules
+- Resources from multiple modules are merged following Android's resource priority rules
+- Resource names should be unique or properly namespaced to avoid conflicts
 - The skin package format is optimized for efficient loading in Android
