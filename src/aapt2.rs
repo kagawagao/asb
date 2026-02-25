@@ -445,6 +445,7 @@ impl Aapt2 {
     ) -> Result<LinkResult> {
         use std::fs::File;
         use zip::write::{FileOptions, ZipWriter};
+        use zip::CompressionMethod;
 
         // Create temporary directory for ZIP files
         // Always use package-specific directory to ensure isolation in multi-task builds
@@ -558,7 +559,7 @@ impl Aapt2 {
                 }
                 used_names.insert(final_name.clone());
 
-                base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
+                base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default().compression_method(CompressionMethod::Stored))?;
                 let content = std::fs::read(flat_file)?;
                 std::io::Write::write_all(&mut base_zip_writer, &content)?;
             }
@@ -640,7 +641,7 @@ impl Aapt2 {
                     }
                     used_names.insert(final_name.clone());
 
-                    overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
+                    overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default().compression_method(CompressionMethod::Stored))?;
                     let content = std::fs::read(flat_file)?;
                     std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
                 }

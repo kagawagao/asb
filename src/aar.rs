@@ -66,20 +66,22 @@ impl AarExtractor {
 
     /// Extract multiple AAR files
     pub fn extract_aars(aar_paths: &[PathBuf], base_temp_dir: &Path) -> Result<Vec<AarInfo>> {
-        let mut aar_infos = Vec::new();
+        use rayon::prelude::*;
 
-        for (i, aar_path) in aar_paths.iter().enumerate() {
-            let aar_name = aar_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown");
-            let extract_dir = base_temp_dir.join(format!("aar_{}_{}", i, aar_name));
+        let results: Vec<Result<AarInfo>> = aar_paths
+            .par_iter()
+            .enumerate()
+            .map(|(i, aar_path)| {
+                let aar_name = aar_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                let extract_dir = base_temp_dir.join(format!("aar_{}_{}", i, aar_name));
+                Self::extract_aar(aar_path, &extract_dir)
+            })
+            .collect();
 
-            let info = Self::extract_aar(aar_path, &extract_dir)?;
-            aar_infos.push(info);
-        }
-
-        Ok(aar_infos)
+        results.into_iter().collect()
     }
 
     /// Clean up extracted AAR directories

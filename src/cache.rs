@@ -23,6 +23,9 @@ pub struct BuildCache {
     cache_dir: PathBuf,
     cache_file: PathBuf,
     cache: CacheData,
+    /// In-memory cache of recently computed hashes to avoid recomputing them
+    /// when updating entries after a needs_recompile check.
+    pending_hashes: HashMap<PathBuf, String>,
 }
 
 impl BuildCache {
@@ -46,6 +49,7 @@ impl BuildCache {
             cache_dir,
             cache_file,
             cache,
+            pending_hashes: HashMap::new(),
         })
     }
 
@@ -71,7 +75,7 @@ impl BuildCache {
     }
 
     /// Check if a file needs recompilation
-    pub fn needs_recompile(&self, resource_file: &Path) -> Result<bool> {
+    pub fn needs_recompile(&mut self, resource_file: &Path) -> Result<bool> {
         let entry = self.cache.entries.get(resource_file);
 
         if entry.is_none() {
@@ -85,9 +89,15 @@ impl BuildCache {
             return Ok(true);
         }
 
-        // Check if file has been modified
+        // Check if file has been modified; cache the hash to reuse in update_entry
         let current_hash = Self::calculate_hash(resource_file)?;
-        Ok(current_hash != entry.hash)
+        if current_hash != entry.hash {
+            self.pending_hashes
+                .insert(resource_file.to_path_buf(), current_hash);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Get cached flat file for a resource
@@ -100,7 +110,11 @@ impl BuildCache {
 
     /// Update cache entry
     pub fn update_entry(&mut self, resource_file: &Path, flat_file: &Path) -> Result<()> {
-        let hash = Self::calculate_hash(resource_file)?;
+        // Reuse the hash computed during needs_recompile if available
+        let hash = match self.pending_hashes.remove(resource_file) {
+            Some(h) => h,
+            None => Self::calculate_hash(resource_file)?,
+        };
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
