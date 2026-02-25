@@ -663,35 +663,16 @@ impl SkinBuilder {
     fn find_resource_files(&self, res_dir: &Path) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
 
-        // Canonicalize res_dir once for consistent path comparison
-        // This handles relative paths, symlinks, and other path variations
-        let canonical_res_dir = res_dir
-            .canonicalize()
-            .unwrap_or_else(|_| res_dir.to_path_buf());
-
+        // min_depth(2) skips both the root directory (depth 0) and files directly
+        // under res_dir (depth 1), ensuring only files inside subdirectories are
+        // included. This avoids per-entry canonicalize() syscalls.
         for entry in WalkDir::new(res_dir)
+            .min_depth(2)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
-
-            // Skip files that are directly under resourceDir
-            // Valid Android resources must be in subdirectories like res/values/, res/drawable/, etc.
-            if let Some(parent) = path.parent() {
-                // Canonicalize parent for accurate comparison
-                let canonical_parent = parent
-                    .canonicalize()
-                    .unwrap_or_else(|_| parent.to_path_buf());
-                if canonical_parent == canonical_res_dir {
-                    // File is directly under resourceDir, skip it as it's invalid
-                    debug!(
-                        "Skipping invalid resource file directly under resourceDir: {}",
-                        path.display()
-                    );
-                    continue;
-                }
-            }
 
             // Check if file is in a layout directory and skip it
             if let Some(parent) = path.parent() {

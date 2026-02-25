@@ -445,6 +445,7 @@ impl Aapt2 {
     ) -> Result<LinkResult> {
         use std::fs::File;
         use zip::write::{FileOptions, ZipWriter};
+        use zip::CompressionMethod;
 
         // Create temporary directory for ZIP files
         // Always use package-specific directory to ensure isolation in multi-task builds
@@ -497,7 +498,9 @@ impl Aapt2 {
         };
 
         // Create ZIP file for base flat files (with caching)
-        let base_zip = temp_dir.join("base_flats.zip");
+        // "_s" suffix denotes stored (no-compression) format; old deflate-compressed
+        // "base_flats.zip" files will never match and so are never reused.
+        let base_zip = temp_dir.join("base_flats_s.zip");
 
         if needs_zip_recreation(&base_zip, base_flat_files) {
             debug!("Creating base ZIP file: {}", base_zip.display());
@@ -558,7 +561,7 @@ impl Aapt2 {
                 }
                 used_names.insert(final_name.clone());
 
-                base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
+                base_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default().compression_method(CompressionMethod::Stored))?;
                 let content = std::fs::read(flat_file)?;
                 std::io::Write::write_all(&mut base_zip_writer, &content)?;
             }
@@ -574,7 +577,9 @@ impl Aapt2 {
                 continue;
             }
 
-            let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
+            // "_s" suffix denotes stored (no-compression) format; old deflate-compressed
+            // "overlay_N.zip" files will never match and so are never reused.
+            let overlay_zip = temp_dir.join(format!("overlay_{}_s.zip", idx));
 
             if needs_zip_recreation(&overlay_zip, overlay_set) {
                 debug!(
@@ -640,7 +645,7 @@ impl Aapt2 {
                     }
                     used_names.insert(final_name.clone());
 
-                    overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default())?;
+                    overlay_zip_writer.start_file::<_, ()>(&final_name, FileOptions::default().compression_method(CompressionMethod::Stored))?;
                     let content = std::fs::read(flat_file)?;
                     std::io::Write::write_all(&mut overlay_zip_writer, &content)?;
                 }
