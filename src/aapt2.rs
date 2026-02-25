@@ -498,7 +498,9 @@ impl Aapt2 {
         };
 
         // Create ZIP file for base flat files (with caching)
-        let base_zip = temp_dir.join("base_flats.zip");
+        // "_s" suffix denotes stored (no-compression) format; old deflate-compressed
+        // "base_flats.zip" files will never match and so are never reused.
+        let base_zip = temp_dir.join("base_flats_s.zip");
 
         if needs_zip_recreation(&base_zip, base_flat_files) {
             debug!("Creating base ZIP file: {}", base_zip.display());
@@ -575,7 +577,9 @@ impl Aapt2 {
                 continue;
             }
 
-            let overlay_zip = temp_dir.join(format!("overlay_{}.zip", idx));
+            // "_s" suffix denotes stored (no-compression) format; old deflate-compressed
+            // "overlay_N.zip" files will never match and so are never reused.
+            let overlay_zip = temp_dir.join(format!("overlay_{}_s.zip", idx));
 
             if needs_zip_recreation(&overlay_zip, overlay_set) {
                 debug!(

@@ -96,6 +96,9 @@ impl BuildCache {
                 .insert(resource_file.to_path_buf(), current_hash);
             Ok(true)
         } else {
+            // Cache the hash even when unchanged so update_entry avoids recomputing it
+            self.pending_hashes
+                .insert(resource_file.to_path_buf(), current_hash);
             Ok(false)
         }
     }
@@ -144,6 +147,7 @@ impl BuildCache {
     #[allow(dead_code)]
     pub fn clear(&mut self) -> Result<()> {
         self.cache.entries.clear();
+        self.pending_hashes.clear();
         if self.cache_file.exists() {
             std::fs::remove_file(&self.cache_file)?;
         }
