@@ -1,13 +1,40 @@
-#![allow(clippy::all, dead_code, unused_variables)]
-
+#[allow(
+    clippy::collapsible_if,
+    clippy::too_many_arguments,
+    clippy::unnecessary_sort_by
+)]
 mod aapt2;
 mod aar;
+#[allow(
+    clippy::collapsible_if,
+    clippy::unnecessary_map_or,
+    clippy::single_char_add_str,
+    clippy::useless_asref
+)]
 mod builder;
 mod cache;
+#[allow(
+    clippy::large_enum_variant,
+    clippy::redundant_closure,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
 mod cli;
+#[allow(clippy::cmp_owned, clippy::unwrap_or_default)]
 mod dependency;
 mod error;
+#[allow(
+    clippy::collapsible_if,
+    clippy::new_without_default,
+    clippy::unwrap_or_default
+)]
 mod resource_priority;
+#[allow(
+    clippy::collapsible_if,
+    clippy::needless_borrow,
+    clippy::ptr_arg,
+    clippy::too_many_arguments
+)]
 mod types;
 
 use anyhow::Result;

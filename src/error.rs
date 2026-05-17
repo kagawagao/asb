@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum AsbError {
     #[error("aapt2 not found. Set ANDROID_HOME or specify --aapt2 path")]
     Aapt2NotFound,

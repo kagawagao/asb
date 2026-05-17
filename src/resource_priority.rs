@@ -427,7 +427,7 @@ mod tests {
         };
         assert!(!tracker.add_resource(res2));
 
-        // Still only 1 resource (first one wins on equal priority)
+        // Still only 1 resource (first one wins on equal priority).
         assert_eq!(tracker.stats(), (1, 1));
     }
 

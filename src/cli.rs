@@ -799,7 +799,8 @@ impl Cli {
 
         // Generate log file name with timestamp
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        let log_filename = format!("build_failure_{}_{}.log", package_name, timestamp);
+        let safe_package_name = Self::sanitize_package_name_for_filename(package_name);
+        let log_filename = format!("build_failure_{}_{}.log", safe_package_name, timestamp);
         let log_path = logs_dir.join(&log_filename);
 
         // Write log content
@@ -820,6 +821,27 @@ impl Cli {
         }
 
         Ok(log_path)
+    }
+
+    fn sanitize_package_name_for_filename(package_name: &str) -> String {
+        let sanitized: String = package_name
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+
+        let collapsed = sanitized.replace("..", "_");
+        let trimmed = collapsed.trim_matches('.');
+        if trimmed.is_empty() {
+            "package".to_string()
+        } else {
+            trimmed.to_string()
+        }
     }
 
     fn run_clean(config_file: Option<PathBuf>, output_dir: Option<PathBuf>) -> Result<()> {
@@ -1055,6 +1077,20 @@ mod tests {
 
         // They should be different files (different timestamps)
         assert_ne!(result1, result2);
+    }
+
+    #[test]
+    fn test_save_failure_log_sanitizes_package_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs_dir = dir.path().join("logs");
+        let path = Cli::save_failure_log("../bad/pkg:name", &["err".to_string()], Some(&logs_dir))
+            .unwrap();
+
+        let filename = path.file_name().unwrap().to_string_lossy();
+        assert!(filename.starts_with("build_failure___bad_pkg_name_"));
+        assert!(!filename.contains('/'));
+        assert!(!filename.contains(':'));
+        assert!(path.starts_with(&logs_dir));
     }
 
     // ==================== BuildConfig::load_configs via temp files ====================
