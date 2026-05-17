@@ -278,7 +278,7 @@ impl Cli {
         // Get max parallel builds setting (CLI > config > default: CPU cores)
         let max_parallel = max_parallel_builds
             .or(config_max_parallel)
-            .unwrap_or_else(|| num_cpus::get());
+            .unwrap_or_else(num_cpus::get);
 
         info!("Maximum parallel builds: {} configs", max_parallel);
 

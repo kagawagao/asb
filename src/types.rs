@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::aapt2::DEFAULT_PACKAGE_ID;
@@ -19,22 +19,20 @@ fn find_highest_android_jar() -> Option<PathBuf> {
 
     if let Ok(entries) = std::fs::read_dir(&platforms_dir) {
         for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_dir() {
                     let dir_name = entry.file_name();
                     let dir_name_str = dir_name.to_string_lossy();
 
                     // Extract version from "android-XX" format
-                    if let Some(version_str) = dir_name_str.strip_prefix("android-") {
-                        if let Ok(version) = version_str.parse::<u32>() {
+                    if let Some(version_str) = dir_name_str.strip_prefix("android-")
+                        && let Ok(version) = version_str.parse::<u32>() {
                             let android_jar = entry.path().join("android.jar");
                             if android_jar.exists() {
                                 versions.push((version, android_jar));
                             }
                         }
-                    }
                 }
-            }
         }
     }
 
@@ -262,7 +260,7 @@ impl MultiAppConfig {
                 for flavor in flavors {
                     result.push(Self::create_build_config_for_flavor_static(
                         &app,
-                        &flavor,
+                        flavor,
                         &common_base_dir,
                         &common_output_dir,
                         &common_output_file,
@@ -307,7 +305,7 @@ impl MultiAppConfig {
     fn create_build_config_static(
         app: &AppConfig,
         common_base_dir: &Option<PathBuf>,
-        common_output_dir: &PathBuf,
+        common_output_dir: &Path,
         common_output_file: &Option<String>,
         common_android_jar: &Option<PathBuf>,
         common_aapt2_path: &Option<PathBuf>,
@@ -343,7 +341,7 @@ impl MultiAppConfig {
             output_dir: app
                 .output_dir
                 .clone()
-                .unwrap_or_else(|| common_output_dir.clone()),
+                .unwrap_or_else(|| common_output_dir.to_path_buf()),
             output_file: app
                 .output_file
                 .clone()
@@ -374,7 +372,7 @@ impl MultiAppConfig {
         app: &AppConfig,
         flavor: &FlavorConfig,
         common_base_dir: &Option<PathBuf>,
-        common_output_dir: &PathBuf,
+        common_output_dir: &Path,
         common_output_file: &Option<String>,
         common_android_jar: &Option<PathBuf>,
         common_aapt2_path: &Option<PathBuf>,
@@ -436,7 +434,7 @@ impl MultiAppConfig {
                 .output_dir
                 .clone()
                 .or_else(|| app.output_dir.clone())
-                .unwrap_or_else(|| common_output_dir.clone()),
+                .unwrap_or_else(|| common_output_dir.to_path_buf()),
             output_file,
             package_name,
             aapt2_path: common_aapt2_path.clone(),

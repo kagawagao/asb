@@ -210,11 +210,10 @@ pub fn find_resources_with_priority(
         let source_path = entry.path();
 
         // Skip hidden files and system files
-        if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with('.') || name == "Thumbs.db" {
+        if let Some(name) = source_path.file_name().and_then(|n| n.to_str())
+            && (name.starts_with('.') || name == "Thumbs.db") {
                 continue;
             }
-        }
 
         // Normalize the resource path for comparison
         let normalized = normalize_resource_path(source_path, resource_dir)?;
@@ -272,11 +271,10 @@ fn find_matching_flat_file(source_path: &Path, flat_files: &[PathBuf]) -> Option
             if flat_name.starts_with(parent_name) {
                 // And contains the file name (without extension for values)
                 if parent_name.starts_with("values") {
-                    if let Some(stem) = source_path.file_stem().and_then(|s| s.to_str()) {
-                        if flat_name.contains(stem) {
+                    if let Some(stem) = source_path.file_stem().and_then(|s| s.to_str())
+                        && flat_name.contains(stem) {
                             return Some(flat_file.clone());
                         }
-                    }
                 } else {
                     if flat_name.contains(file_name) {
                         return Some(flat_file.clone());

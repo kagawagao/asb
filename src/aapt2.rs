@@ -31,8 +31,7 @@ impl Aapt2 {
         if let Ok(output) = Command::new(if cfg!(windows) { "where" } else { "which" })
             .arg("aapt2")
             .output()
-        {
-            if output.status.success() {
+            && output.status.success() {
                 let path_str = String::from_utf8_lossy(&output.stdout);
                 if let Some(line) = path_str.lines().next() {
                     let path = PathBuf::from(line.trim());
@@ -42,13 +41,12 @@ impl Aapt2 {
                     }
                 }
             }
-        }
 
         // Try ANDROID_HOME
         if let Ok(android_home) = std::env::var("ANDROID_HOME") {
             let build_tools_dir = PathBuf::from(android_home).join("build-tools");
-            if build_tools_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&build_tools_dir) {
+            if build_tools_dir.exists()
+                && let Ok(entries) = std::fs::read_dir(&build_tools_dir) {
                     let mut versions: Vec<_> = entries
                         .filter_map(|e| e.ok())
                         .filter(|e| e.path().is_dir())
@@ -64,7 +62,6 @@ impl Aapt2 {
                         }
                     }
                 }
-            }
         }
 
         anyhow::bail!(
@@ -208,9 +205,9 @@ impl Aapt2 {
                 // aapt2 creates names like:
                 //   - values_strings.arsc.flat for res/values/strings.xml
                 //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
-                if let Some(parent) = file.parent() {
-                    if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
-                        if let Some(file_name) = file.file_name().and_then(|n| n.to_str()) {
+                if let Some(parent) = file.parent()
+                    && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str())
+                        && let Some(file_name) = file.file_name().and_then(|n| n.to_str()) {
                             // Try different naming patterns based on resource type
                             let possible_names = if parent_name.starts_with("values") {
                                 // For values resources: values_strings.arsc.flat
@@ -231,8 +228,6 @@ impl Aapt2 {
                                 }
                             }
                         }
-                    }
-                }
 
                 anyhow::bail!("Could not find compiled flat file for {}", file.display())
             })
@@ -289,9 +284,9 @@ impl Aapt2 {
         // aapt2 creates names like:
         //   - values_strings.arsc.flat for res/values/strings.xml
         //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
-        if let Some(parent) = resource_file.parent() {
-            if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
-                if let Some(file_name) = resource_file.file_name().and_then(|n| n.to_str()) {
+        if let Some(parent) = resource_file.parent()
+            && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str())
+                && let Some(file_name) = resource_file.file_name().and_then(|n| n.to_str()) {
                     // Try different naming patterns based on resource type
                     let possible_names = if parent_name.starts_with("values") {
                         // For values resources: values_strings.arsc.flat
@@ -315,8 +310,6 @@ impl Aapt2 {
                         }
                     }
                 }
-            }
-        }
 
         anyhow::bail!(
             "Could not find compiled flat file for {}",
@@ -485,13 +478,11 @@ impl Aapt2 {
             };
 
             for flat_file in flat_files {
-                if let Ok(metadata) = std::fs::metadata(flat_file) {
-                    if let Ok(modified) = metadata.modified() {
-                        if modified > zip_modified {
+                if let Ok(metadata) = std::fs::metadata(flat_file)
+                    && let Ok(modified) = metadata.modified()
+                        && modified > zip_modified {
                             return true;
                         }
-                    }
-                }
             }
 
             false
@@ -524,18 +515,13 @@ impl Aapt2 {
                 };
 
                 // Strategy 2: If that didn't work, try using parent directory + filename
-                if file_name.is_none() {
-                    if let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name())
-                    {
-                        if let (Some(parent_name), Some(file_name_str)) =
+                if file_name.is_none()
+                    && let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name())
+                        && let (Some(parent_name), Some(file_name_str)) =
                             (parent.file_name(), name.to_str())
-                        {
-                            if let Some(parent_str) = parent_name.to_str() {
+                            && let Some(parent_str) = parent_name.to_str() {
                                 file_name = Some(format!("{}/{}", parent_str, file_name_str));
                             }
-                        }
-                    }
-                }
 
                 // Strategy 3: Fallback to just filename
                 let mut final_name = file_name.unwrap_or_else(|| {
@@ -610,19 +596,14 @@ impl Aapt2 {
                     };
 
                     // Strategy 2: If that didn't work, try using parent directory + filename
-                    if file_name.is_none() {
-                        if let (Some(parent), Some(name)) =
+                    if file_name.is_none()
+                        && let (Some(parent), Some(name)) =
                             (flat_file.parent(), flat_file.file_name())
-                        {
-                            if let (Some(parent_name), Some(file_name_str)) =
+                            && let (Some(parent_name), Some(file_name_str)) =
                                 (parent.file_name(), name.to_str())
-                            {
-                                if let Some(parent_str) = parent_name.to_str() {
+                                && let Some(parent_str) = parent_name.to_str() {
                                     file_name = Some(format!("{}/{}", parent_str, file_name_str));
                                 }
-                            }
-                        }
-                    }
 
                     // Strategy 3: Fallback to just filename
                     let mut final_name = file_name.unwrap_or_else(|| {

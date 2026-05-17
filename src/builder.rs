@@ -54,22 +54,18 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
     for res_dir in resource_dirs {
         for entry in WalkDir::new(res_dir).into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
-            if path.is_file() {
-                if let Some(parent) = path.parent() {
-                    if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+            if path.is_file()
+                && let Some(parent) = path.parent()
+                    && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
                         // Check for mipmap-anydpi (without version qualifier) or mipmap-anydpi-v* folders
-                        if parent_name.starts_with("mipmap-anydpi") {
-                            if let Ok(content) = fs::read_to_string(path) {
-                                if content.contains("<adaptive-icon>")
-                                    || content.contains("<adaptive-icon ")
+                        if parent_name.starts_with("mipmap-anydpi")
+                            && let Ok(content) = fs::read_to_string(path)
+                                && (content.contains("<adaptive-icon>")
+                                    || content.contains("<adaptive-icon "))
                                 {
                                     return true;
                                 }
-                            }
-                        }
                     }
-                }
-            }
         }
     }
     false
@@ -154,7 +150,7 @@ impl SkinBuilder {
             .config
             .aar_files
             .as_ref()
-            .map_or(false, |a| !a.is_empty());
+            .is_some_and(|a| !a.is_empty());
         let phases = if has_aars { 4u64 } else { 3u64 };
         let pb = ProgressBar::new(phases);
         pb.set_style(
@@ -209,14 +205,13 @@ impl SkinBuilder {
         let mut aar_infos = Vec::new();
         let temp_dir = build_dir.join(".temp");
 
-        if let Some(aar_files) = &self.config.aar_files {
-            if !aar_files.is_empty() {
+        if let Some(aar_files) = &self.config.aar_files
+            && !aar_files.is_empty() {
                 pb.set_message("Extracting AARs...");
                 info!("Extracting {} AAR files...", aar_files.len());
                 aar_infos = AarExtractor::extract_aars(aar_files, &temp_dir)?;
                 pb.inc(1);
             }
-        }
 
         // Collect all resource directories with their priorities
         // Following Android standard priority: Library (AAR) < Additional < Main
@@ -389,7 +384,7 @@ impl SkinBuilder {
                 for dir in &missing_dirs {
                     error_msg.push_str(&format!("  - {}\n", dir));
                 }
-                error_msg.push_str("\n");
+                error_msg.push('\n');
             }
 
             error_msg.push_str("Possible solutions:\n");
@@ -440,9 +435,7 @@ impl SkinBuilder {
         info!("Linking resources with Android resource priority strategy...");
         let output_filename = self
             .config
-            .output_file
-            .as_ref()
-            .map(|f| f.clone())
+            .output_file.clone()
             .unwrap_or_else(|| format!("{}.skin", self.config.package_name));
 
         let output_apk = self.config.output_dir.join(output_filename);
@@ -723,15 +716,14 @@ impl SkinBuilder {
             let path = entry.path();
 
             // Check if file is in a layout directory and skip it
-            if let Some(parent) = path.parent() {
-                if let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
+            if let Some(parent) = path.parent()
+                && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
                     // Check for layout directories (layout, layout-land, layout-sw600dp, etc.)
                     if parent_name.starts_with("layout") {
                         debug!("Filtering out layout file: {}", path.display());
                         continue;
                     }
                 }
-            }
 
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 // Skip hidden files, system files, and specific resource files
@@ -782,11 +774,10 @@ impl SkinBuilder {
             if cache_dir.exists() {
                 std::fs::remove_dir_all(cache_dir)?;
             }
-        } else if let Some(build_dir) = &self.config.build_dir {
-            if build_dir.exists() {
+        } else if let Some(build_dir) = &self.config.build_dir
+            && build_dir.exists() {
                 std::fs::remove_dir_all(build_dir)?;
             }
-        }
 
         info!("Build artifacts cleaned");
         Ok(())
