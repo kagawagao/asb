@@ -60,7 +60,9 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
                         // Check for mipmap-anydpi (without version qualifier) or mipmap-anydpi-v* folders
                         if parent_name.starts_with("mipmap-anydpi") {
                             if let Ok(content) = fs::read_to_string(path) {
-                                if content.contains("<adaptive-icon>") || content.contains("<adaptive-icon ") {
+                                if content.contains("<adaptive-icon>")
+                                    || content.contains("<adaptive-icon ")
+                                {
                                     return true;
                                 }
                             }
