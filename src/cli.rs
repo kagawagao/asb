@@ -999,10 +999,11 @@ mod tests {
             "com.example.test",
             &["Error 1".to_string(), "Error 2".to_string()],
         );
+        // Canonicalize before reverting cwd — log_path is relative
+        assert!(result.is_ok());
+        let log_path = result.unwrap().canonicalize().unwrap();
         std::env::set_current_dir(&original_dir).unwrap();
 
-        assert!(result.is_ok());
-        let log_path = result.unwrap();
         assert!(log_path.exists());
         assert!(
             log_path
@@ -1024,10 +1025,10 @@ mod tests {
         std::env::set_current_dir(dir.path()).unwrap();
 
         let result = Cli::save_failure_log("com.empty", &[]);
+        assert!(result.is_ok());
+        let log_path = result.unwrap().canonicalize().unwrap();
         std::env::set_current_dir(&original_dir).unwrap();
 
-        assert!(result.is_ok());
-        let log_path = result.unwrap();
         assert!(log_path.exists());
         let content = std::fs::read_to_string(&log_path).unwrap();
         assert!(content.contains("Package: com.empty"));

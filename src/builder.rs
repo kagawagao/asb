@@ -1223,7 +1223,7 @@ mod tests {
         let res_dir = temp_dir.path().join("res");
         let anydpi_dir = res_dir.join("mipmap-anydpi-v26");
         fs::create_dir_all(&anydpi_dir).unwrap();
-        fs::write(anydpi_dir.join("ic_launcher.xml"), "<adaptive-icon-no/>").unwrap();
+        fs::write(anydpi_dir.join("ic_launcher.xml"), "<not-adaptive/>").unwrap();
 
         let result = super::has_adaptive_icon_resources(&[res_dir]);
         assert!(
