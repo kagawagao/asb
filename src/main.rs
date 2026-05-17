@@ -10,7 +10,7 @@ mod types;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use cli::Cli;
 

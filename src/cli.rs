@@ -290,7 +290,9 @@ impl Cli {
 
         // If CLI arguments are provided and we have multiple configs, warn the user
         if has_cli_args && build_configs.len() > 1 {
-            warn!("CLI arguments provided with array configuration. CLI arguments will override ALL configurations.");
+            warn!(
+                "CLI arguments provided with array configuration. CLI arguments will override ALL configurations."
+            );
         }
 
         // Override configs with CLI arguments (CLI args have highest priority)
@@ -1002,9 +1004,11 @@ mod tests {
         assert!(result.is_ok());
         let log_path = result.unwrap();
         assert!(log_path.exists());
-        assert!(log_path
-            .to_string_lossy()
-            .contains("build_failure_com.example.test_"));
+        assert!(
+            log_path
+                .to_string_lossy()
+                .contains("build_failure_com.example.test_")
+        );
 
         let content = std::fs::read_to_string(&log_path).unwrap();
         assert!(content.contains("Build Failure Log"));
