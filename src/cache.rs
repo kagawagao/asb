@@ -395,12 +395,20 @@ mod tests {
         let mut cache = BuildCache::new(cache_dir).unwrap();
         cache.init().unwrap();
 
-        let source = create_temp_file(tmp.path(), "colors.xml", b"<resources><color name=\"x\">#fff</color></resources>");
+        let source = create_temp_file(
+            tmp.path(),
+            "colors.xml",
+            b"<resources><color name=\"x\">#fff</color></resources>",
+        );
         let flat = create_temp_file(tmp.path(), "colors.xml.flat", b"flat_data");
 
         cache.update_entry(&source, &flat).unwrap();
         let cached = cache.get_cached_flat_file(&source);
-        assert_eq!(cached, Some(flat.clone()), "Should return the flat file path");
+        assert_eq!(
+            cached,
+            Some(flat.clone()),
+            "Should return the flat file path"
+        );
     }
 
     #[test]
@@ -475,7 +483,11 @@ mod tests {
         // Reload cache from disk -> should have the entry
         let cache2 = BuildCache::new(cache_dir.clone()).unwrap();
         let cached = cache2.get_cached_flat_file(&source);
-        assert_eq!(cached, Some(flat.clone()), "Reloaded cache should have entry");
+        assert_eq!(
+            cached,
+            Some(flat.clone()),
+            "Reloaded cache should have entry"
+        );
 
         // Unchanged file -> no recompile
         let mut cache3 = BuildCache::new(cache_dir).unwrap();
@@ -501,7 +513,10 @@ mod tests {
 
         cache.clear().unwrap();
 
-        assert!(cache.get_all_cached_flat_files().is_empty(), "Entries should be cleared");
+        assert!(
+            cache.get_all_cached_flat_files().is_empty(),
+            "Entries should be cleared"
+        );
         assert!(!cache_file.exists(), "Cache file should be removed");
     }
 

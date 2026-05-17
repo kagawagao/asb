@@ -143,7 +143,11 @@ impl SkinBuilder {
         let build_start = std::time::Instant::now();
 
         // Determine number of phases for progress bar
-        let has_aars = self.config.aar_files.as_ref().map_or(false, |a| !a.is_empty());
+        let has_aars = self
+            .config
+            .aar_files
+            .as_ref()
+            .map_or(false, |a| !a.is_empty());
         let phases = if has_aars { 4u64 } else { 3u64 };
         let pb = ProgressBar::new(phases);
         pb.set_style(
@@ -437,8 +441,11 @@ impl SkinBuilder {
         let output_apk = self.config.output_dir.join(output_filename);
 
         // Ensure android_jar is set
-        let android_jar = self.config.android_jar.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("android_jar not set. Please configure it or ensure ANDROID_HOME is set."))?;
+        let android_jar = self.config.android_jar.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "android_jar not set. Please configure it or ensure ANDROID_HOME is set."
+            )
+        })?;
 
         let link_result = self.aapt2.link_with_overlays(
             &base_flat_files,
@@ -1208,11 +1215,7 @@ mod tests {
         let res_dir = temp_dir.path().join("res");
         let anydpi_dir = res_dir.join("mipmap-anydpi-v26");
         fs::create_dir_all(&anydpi_dir).unwrap();
-        fs::write(
-            anydpi_dir.join("ic_launcher.xml"),
-            "<adaptive-icon-no/>",
-        )
-        .unwrap();
+        fs::write(anydpi_dir.join("ic_launcher.xml"), "<adaptive-icon-no/>").unwrap();
 
         let result = super::has_adaptive_icon_resources(&[res_dir]);
         assert!(
@@ -1234,7 +1237,10 @@ mod tests {
         .unwrap();
 
         let result = super::has_adaptive_icon_resources(&[res_dir]);
-        assert!(result, "mipmap-anydpi with <adaptive-icon should return true");
+        assert!(
+            result,
+            "mipmap-anydpi with <adaptive-icon should return true"
+        );
     }
 
     #[test]
@@ -1250,7 +1256,10 @@ mod tests {
         .unwrap();
 
         let result = super::has_adaptive_icon_resources(&[res_dir]);
-        assert!(result, "mipmap-anydpi (no version) with <adaptive-icon should return true");
+        assert!(
+            result,
+            "mipmap-anydpi (no version) with <adaptive-icon should return true"
+        );
     }
 
     // ========== Tests for SkinBuilder::new with various configs ==========
@@ -1283,7 +1292,10 @@ mod tests {
         };
 
         let builder = SkinBuilder::new(config)?;
-        assert!(builder.cache.is_none(), "Cache should be None when incremental is not set");
+        assert!(
+            builder.cache.is_none(),
+            "Cache should be None when incremental is not set"
+        );
         Ok(())
     }
 
@@ -1315,7 +1327,10 @@ mod tests {
         };
 
         let builder = SkinBuilder::new(config)?;
-        assert!(builder.cache.is_some(), "Cache should be Some when incremental is true");
+        assert!(
+            builder.cache.is_some(),
+            "Cache should be Some when incremental is true"
+        );
         Ok(())
     }
 
@@ -1347,7 +1362,10 @@ mod tests {
         };
 
         let builder = SkinBuilder::new(config)?;
-        assert!(builder.cache.is_none(), "Cache should be None when incremental is false");
+        assert!(
+            builder.cache.is_none(),
+            "Cache should be None when incremental is false"
+        );
         Ok(())
     }
 
@@ -1439,7 +1457,11 @@ mod tests {
         // res2 has adaptive icons
         let anydpi = res_dir2.join("mipmap-anydpi-v26");
         fs::create_dir_all(&anydpi).unwrap();
-        fs::write(anydpi.join("ic_launcher.xml"), "<adaptive-icon></adaptive-icon>").unwrap();
+        fs::write(
+            anydpi.join("ic_launcher.xml"),
+            "<adaptive-icon></adaptive-icon>",
+        )
+        .unwrap();
 
         let result = super::has_adaptive_icon_resources(&[res_dir1.clone(), res_dir2.clone()]);
         assert!(result, "Should detect adaptive icon in second dir");
