@@ -470,9 +470,16 @@ fn test_common_dep_cache_multiple_directories() {
     assert!(!cache.needs_recompile(&dir2).unwrap());
 
     // Modify dir1 only
-    fs::write(dir1.join("colors.xml"), b"<resources><color name=\"a\">#bbb</color></resources>").unwrap();
+    fs::write(
+        dir1.join("colors.xml"),
+        b"<resources><color name=\"a\">#bbb</color></resources>",
+    )
+    .unwrap();
     assert!(cache.needs_recompile(&dir1).unwrap());
-    assert!(!cache.needs_recompile(&dir2).unwrap(), "dir2 should remain unchanged");
+    assert!(
+        !cache.needs_recompile(&dir2).unwrap(),
+        "dir2 should remain unchanged"
+    );
 }
 
 #[test]
@@ -486,22 +493,30 @@ fn test_common_dep_cache_edge_cases() {
     let empty_dir = tmp.path().join("empty");
     fs::create_dir_all(&empty_dir).unwrap();
     let empty_flat = create_file(tmp.path(), "empty.flat", b"ef");
-    cache.update_entry(&empty_dir, vec![empty_flat.clone()]).unwrap();
-    assert!(!cache.needs_recompile(&empty_dir).unwrap(), "Empty dir should be consistent");
+    cache
+        .update_entry(&empty_dir, vec![empty_flat.clone()])
+        .unwrap();
+    assert!(
+        !cache.needs_recompile(&empty_dir).unwrap(),
+        "Empty dir should be consistent"
+    );
 
     // Directory with a nested subdirectory containing files
     let nested_dir = tmp.path().join("nested");
     fs::create_dir_all(nested_dir.join("values")).unwrap();
     create_file(&nested_dir.join("values"), "strings.xml", b"<resources/>");
     let nested_flat = create_file(tmp.path(), "nested.flat", b"nf");
-    cache.update_entry(&nested_dir, vec![nested_flat.clone()]).unwrap();
+    cache
+        .update_entry(&nested_dir, vec![nested_flat.clone()])
+        .unwrap();
     assert!(!cache.needs_recompile(&nested_dir).unwrap());
 
     // Modify nested file
     fs::write(
         nested_dir.join("values").join("strings.xml"),
         b"<resources><string name=\"x\">y</string></resources>",
-    ).unwrap();
+    )
+    .unwrap();
     assert!(
         cache.needs_recompile(&nested_dir).unwrap(),
         "Nested file change should be detected"
@@ -520,18 +535,18 @@ fn test_common_dep_cache_corrupted_recovery() {
     fs::write(&cache_file, b"\x00\x01\x02 not json").unwrap();
     let cache = CommonDependencyCache::new(cache_dir.clone()).unwrap();
     assert!(
-        cache.get_cached_flat_files(&PathBuf::from("/fake")).is_none(),
+        cache.get_cached_flat_files(&PathBuf::from("/fake"))
+            .is_none(),
         "Corrupted file should yield empty cache"
     );
 
     // Test: wrong version
-    fs::write(
-        &cache_file,
-        b"{\"version\":\"2.0-invalid\",\"entries\":{}}",
-    ).unwrap();
+    fs::write(&cache_file, b"{\"version\":\"2.0-invalid\",\"entries\":{}}").unwrap();
     let cache2 = CommonDependencyCache::new(cache_dir).unwrap();
     assert!(
-        cache2.get_cached_flat_files(&PathBuf::from("/fake")).is_none(),
+        cache2
+            .get_cached_flat_files(&PathBuf::from("/fake"))
+            .is_none(),
         "Wrong version should yield empty cache"
     );
 }
