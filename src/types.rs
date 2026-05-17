@@ -673,9 +673,12 @@ impl BuildConfig {
     }
 
     /// Load configuration from file or use defaults
-    /// Priority: explicit config file > asb.config.json in current dir > built-in defaults
+    /// Priority: explicit config file > asb.config.json in base_dir > built-in defaults
     #[allow(dead_code)]
-    pub fn load_or_default(config_file: Option<PathBuf>) -> anyhow::Result<Self> {
+    pub fn load_or_default(
+        config_file: Option<PathBuf>,
+        base_dir: Option<&Path>,
+    ) -> anyhow::Result<Self> {
         // If explicit config file is provided, use it
         if let Some(config_path) = config_file {
             let content = std::fs::read_to_string(&config_path)?;
@@ -684,8 +687,9 @@ impl BuildConfig {
             return Ok(config);
         }
 
-        // Check for asb.config.json in current directory
-        let default_config_path = PathBuf::from("./asb.config.json");
+        // Check for asb.config.json under base_dir (or cwd if None)
+        let base = base_dir.unwrap_or_else(|| Path::new("."));
+        let default_config_path = base.join("asb.config.json");
         if default_config_path.exists() {
             let content = std::fs::read_to_string(&default_config_path)?;
             let mut config: Self = serde_json::from_str(&content)?;
@@ -702,12 +706,16 @@ impl BuildConfig {
     /// 1. Multi-app object format (new): { "outputDir": "...", "androidJar": "...", "apps": [...] }
     /// 2. Array format: [{ config1 }, { config2 }]
     /// 3. Single object format: { "resourceDir": "...", ... }
-    pub fn load_configs(config_file: Option<PathBuf>) -> anyhow::Result<LoadedConfigs> {
+    pub fn load_configs(
+        config_file: Option<PathBuf>,
+        base_dir: Option<&Path>,
+    ) -> anyhow::Result<LoadedConfigs> {
         // Determine which config file to use
         let config_path = if let Some(path) = config_file {
             path
         } else {
-            let default_path = PathBuf::from("./asb.config.json");
+            let base = base_dir.unwrap_or_else(|| Path::new("."));
+            let default_path = base.join("asb.config.json");
             if default_path.exists() {
                 default_path
             } else {

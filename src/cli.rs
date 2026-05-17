@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 
 use crate::aapt2::Aapt2;
@@ -232,7 +232,7 @@ impl Cli {
         let using_defaults = config_file.is_none() && !PathBuf::from("./asb.config.json").exists();
 
         // Load configs: support both single and array mode
-        let loaded = BuildConfig::load_configs(config_file)?;
+        let loaded = BuildConfig::load_configs(config_file, None)?;
 
         // Save all package names before moving configs (for error messages)
         let all_package_names: Vec<String> = loaded
@@ -417,7 +417,7 @@ impl Cli {
                 }
 
                 // Save failure log
-                match Self::save_failure_log(&package_name, &result.errors) {
+                match Self::save_failure_log(&package_name, &result.errors, None) {
                     Ok(log_path) => {
                         println!("\n  {}: {}", "Log saved to".yellow(), log_path.display());
                     }
@@ -757,7 +757,7 @@ impl Cli {
                     }
                     // Save failure log
                     if let Some(_config) = original_configs.get(*idx) {
-                        match Self::save_failure_log(package_name, &result.errors) {
+                        match Self::save_failure_log(package_name, &result.errors, None) {
                             Ok(log_path) => {
                                 println!(
                                     "      {}: {}",
@@ -786,11 +786,16 @@ impl Cli {
         builder.build().await
     }
 
-    fn save_failure_log(package_name: &str, errors: &[String]) -> Result<PathBuf> {
+    fn save_failure_log(
+        package_name: &str,
+        errors: &[String],
+        base_dir: Option<&Path>,
+    ) -> Result<PathBuf> {
         use std::io::Write;
 
-        // Create logs directory in current working directory
-        let logs_dir = PathBuf::from("./logs");
+        // Create logs directory under base_dir (or cwd if None)
+        let base = base_dir.unwrap_or_else(|| Path::new("."));
+        let logs_dir = base.join("logs");
         std::fs::create_dir_all(&logs_dir)?;
 
         // Generate log file name with timestamp
@@ -991,25 +996,19 @@ mod tests {
     #[test]
     fn test_save_failure_log_creates_file() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
         let result = Cli::save_failure_log(
             "com.example.test",
             &["Error 1".to_string(), "Error 2".to_string()],
+            Some(dir.path()),
         );
-        let _ = std::env::set_current_dir(&original_dir);
-
         assert!(result.is_ok());
-        let rel_path = result.unwrap();
-        let log_path = dir.path().join(&rel_path);
+        let log_path = result.unwrap();
         assert!(log_path.exists());
         assert!(
             log_path
                 .to_string_lossy()
                 .contains("build_failure_com.example.test_")
         );
-
         let content = std::fs::read_to_string(&log_path).unwrap();
         assert!(content.contains("Build Failure Log"));
         assert!(content.contains("Package: com.example.test"));
@@ -1020,15 +1019,9 @@ mod tests {
     #[test]
     fn test_save_failure_log_empty_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let result = Cli::save_failure_log("com.empty", &[]);
-        let _ = std::env::set_current_dir(&original_dir);
-
+        let result = Cli::save_failure_log("com.empty", &[], Some(dir.path()));
         assert!(result.is_ok());
-        let rel_path = result.unwrap();
-        let log_path = dir.path().join(&rel_path);
+        let log_path = result.unwrap();
         assert!(log_path.exists());
         let content = std::fs::read_to_string(&log_path).unwrap();
         assert!(content.contains("Package: com.empty"));
@@ -1038,34 +1031,25 @@ mod tests {
     #[test]
     fn test_save_failure_log_creates_logs_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        // Ensure ./logs does not exist yet
-        let logs_dir = PathBuf::from("./logs");
-        assert!(!logs_dir.exists());
-
-        let result = Cli::save_failure_log("com.test", &["err".to_string()]);
-        let _ = std::env::set_current_dir(&original_dir);
-
-        assert!(result.is_ok());
-        // logs dir should have been created in the temp dir
+        // logs dir should NOT exist yet
         let logs_in_temp = dir.path().join("logs");
+        assert!(!logs_in_temp.exists());
+        let result = Cli::save_failure_log("com.test", &["err".to_string()], Some(dir.path()));
+        assert!(result.is_ok());
+        // logs dir should have been created
         assert!(logs_in_temp.exists());
     }
 
     #[test]
     fn test_save_failure_log_unique_filenames() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let result1 = Cli::save_failure_log("com.example", &["err".to_string()]).unwrap();
+        let base = dir.path();
+        let result1 =
+            Cli::save_failure_log("com.example", &["err".to_string()], Some(base)).unwrap();
         // Small sleep to ensure timestamp changes
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        let result2 = Cli::save_failure_log("com.example", &["err".to_string()]).unwrap();
-        let _ = std::env::set_current_dir(&original_dir);
-
+        let result2 =
+            Cli::save_failure_log("com.example", &["err".to_string()], Some(base)).unwrap();
         // They should be different files (different timestamps)
         assert_ne!(result1, result2);
     }
@@ -1093,7 +1077,7 @@ mod tests {
             }"#,
         );
 
-        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        let loaded = BuildConfig::load_configs(Some(config_path), None).unwrap();
         assert_eq!(loaded.configs.len(), 1);
         assert_eq!(loaded.configs[0].package_name, "com.single.app");
         assert_eq!(loaded.configs[0].resource_dir, PathBuf::from("./myres"));
@@ -1133,7 +1117,7 @@ mod tests {
             ]"#,
         );
 
-        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        let loaded = BuildConfig::load_configs(Some(config_path), None).unwrap();
         assert_eq!(loaded.configs.len(), 2);
         assert_eq!(loaded.configs[0].package_name, "com.example.app1");
         assert_eq!(loaded.configs[1].package_name, "com.example.app2");
@@ -1157,7 +1141,7 @@ mod tests {
             ]"#,
         );
 
-        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        let loaded = BuildConfig::load_configs(Some(config_path), None).unwrap();
         assert_eq!(loaded.configs.len(), 1);
         assert_eq!(loaded.configs[0].package_name, "com.solo");
     }
@@ -1185,7 +1169,7 @@ mod tests {
             }"#,
         );
 
-        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        let loaded = BuildConfig::load_configs(Some(config_path), None).unwrap();
         assert_eq!(loaded.configs.len(), 2);
         assert_eq!(loaded.configs[0].package_name, "com.example.app1");
         assert_eq!(loaded.configs[1].package_name, "com.example.app2");
@@ -1216,7 +1200,7 @@ mod tests {
             }"#,
         );
 
-        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        let loaded = BuildConfig::load_configs(Some(config_path), None).unwrap();
         assert_eq!(loaded.configs.len(), 1);
         let config = &loaded.configs[0];
         assert_eq!(config.package_name, "com.skin.one");
@@ -1229,13 +1213,8 @@ mod tests {
     #[test]
     fn test_load_configs_default_no_config_file() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
         // No config file passed, and no asb.config.json in temp dir
-        let loaded = BuildConfig::load_configs(None).unwrap();
-        let _ = std::env::set_current_dir(&original_dir); // may fail if parallel test changed cwd
-
+        let loaded = BuildConfig::load_configs(None, Some(dir.path())).unwrap();
         assert_eq!(loaded.configs.len(), 1);
         let default = &loaded.configs[0];
         assert_eq!(default.package_name, "com.example.skin");
@@ -1265,7 +1244,7 @@ mod tests {
     #[test]
     fn test_load_configs_nonexistent_file() {
         let result =
-            BuildConfig::load_configs(Some(PathBuf::from("/nonexistent/path/config.json")));
+            BuildConfig::load_configs(Some(PathBuf::from("/nonexistent/path/config.json")), None);
         assert!(result.is_err());
     }
 
@@ -1281,7 +1260,7 @@ mod tests {
         );
 
         // Missing resourceDir, manifestPath, outputDir -> should fail deserialization
-        let result = BuildConfig::load_configs(Some(config_path));
+        let result = BuildConfig::load_configs(Some(config_path), None);
         assert!(result.is_err());
     }
 
@@ -1608,7 +1587,7 @@ mod tests {
             }"#,
         );
 
-        let config = BuildConfig::load_or_default(Some(config_path)).unwrap();
+        let config = BuildConfig::load_or_default(Some(config_path), None).unwrap();
         assert_eq!(config.package_name, "com.custom.load");
         assert_eq!(config.resource_dir, PathBuf::from("./custom_res"));
     }
@@ -1627,14 +1606,8 @@ mod tests {
                 "packageName": "com.auto.detect"
             }"#,
         );
-
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
         // load_or_default with None should detect asb.config.json
-        let config = BuildConfig::load_or_default(None).unwrap();
-        let _ = std::env::set_current_dir(&original_dir); // may fail if parallel test changed cwd
-
+        let config = BuildConfig::load_or_default(None, Some(dir.path())).unwrap();
         assert_eq!(config.package_name, "com.auto.detect");
         assert_eq!(config.resource_dir, PathBuf::from("./auto_res"));
     }
@@ -1642,20 +1615,15 @@ mod tests {
     #[test]
     fn test_load_or_default_fallback_to_defaults() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
-        std::env::set_current_dir(dir.path()).unwrap();
-
         // No asb.config.json in temp dir, and no explicit file -> defaults
-        let config = BuildConfig::load_or_default(None).unwrap();
-        let _ = std::env::set_current_dir(&original_dir); // may fail if parallel test changed cwd
-
+        let config = BuildConfig::load_or_default(None, Some(dir.path())).unwrap();
         assert_eq!(config.package_name, "com.example.skin");
         assert_eq!(config.resource_dir, PathBuf::from("./src/main/res"));
     }
 
     #[test]
     fn test_load_or_default_nonexistent_file() {
-        let result = BuildConfig::load_or_default(Some(PathBuf::from("/no/such/file.json")));
+        let result = BuildConfig::load_or_default(Some(PathBuf::from("/no/such/file.json")), None);
         assert!(result.is_err());
     }
 }

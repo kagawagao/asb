@@ -34,7 +34,7 @@ jobs:
       run: cargo clippy --all-targets -- -D warnings
 
     - name: Run cargo test
-      run: cargo test --all-targets -- --test-threads=1
+      run: cargo test --all-targets
 
   # ── Build matrix ──────────────────────────────────────────────
   build:
