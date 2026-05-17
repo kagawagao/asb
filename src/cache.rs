@@ -553,8 +553,10 @@ mod tests {
 
         // Should not panic, should start with empty cache
         let cache = BuildCache::new(cache_dir).unwrap();
-        assert!(cache.get_all_cached_flat_files().is_empty(),
-            "Corrupted cache file should result in empty cache");
+        assert!(
+            cache.get_all_cached_flat_files().is_empty(),
+            "Corrupted cache file should result in empty cache"
+        );
     }
 
     #[test]
@@ -569,8 +571,10 @@ mod tests {
         fs::write(&cache_file, bad_version).unwrap();
 
         let cache = BuildCache::new(cache_dir).unwrap();
-        assert!(cache.get_all_cached_flat_files().is_empty(),
-            "Wrong version should result in empty cache");
+        assert!(
+            cache.get_all_cached_flat_files().is_empty(),
+            "Wrong version should result in empty cache"
+        );
     }
 
     #[test]
@@ -641,8 +645,16 @@ mod tests {
 
         let res_dir = tmp.path().join("res");
         fs::create_dir_all(&res_dir).unwrap();
-        create_temp_file(&res_dir, "colors.xml", b"<resources><color name=\"x\">#fff</color></resources>");
-        create_temp_file(&res_dir, "dimens.xml", b"<resources><dimen name=\"y\">10dp</dimen></resources>");
+        create_temp_file(
+            &res_dir,
+            "colors.xml",
+            b"<resources><color name=\"x\">#fff</color></resources>",
+        );
+        create_temp_file(
+            &res_dir,
+            "dimens.xml",
+            b"<resources><dimen name=\"y\">10dp</dimen></resources>",
+        );
 
         let flat_files = vec![
             tmp.path().join("colors.flat"),
@@ -656,7 +668,11 @@ mod tests {
         cache.update_entry(&res_dir, flat_files.clone()).unwrap();
 
         let cached = cache.get_cached_flat_files(&res_dir);
-        assert_eq!(cached, Some(flat_files.clone()), "Should return cached flat files");
+        assert_eq!(
+            cached,
+            Some(flat_files.clone()),
+            "Should return cached flat files"
+        );
     }
 
     #[test]
@@ -746,7 +762,11 @@ mod tests {
         // Reload
         let cache2 = CommonDependencyCache::new(cache_dir.clone()).unwrap();
         let cached = cache2.get_cached_flat_files(&res_dir);
-        assert_eq!(cached, Some(vec![flat.clone()]), "Reloaded cache should have entry");
+        assert_eq!(
+            cached,
+            Some(vec![flat.clone()]),
+            "Reloaded cache should have entry"
+        );
 
         // Unchanged -> no recompile
         let needs = cache2.needs_recompile(&res_dir).unwrap();
@@ -779,7 +799,10 @@ mod tests {
             cache.get_cached_flat_files(&res_dir).is_none(),
             "Entries should be cleared"
         );
-        assert!(!cache_file.exists(), "Cache file should be removed after clear");
+        assert!(
+            !cache_file.exists(),
+            "Cache file should be removed after clear"
+        );
     }
 
     #[test]
@@ -793,7 +816,10 @@ mod tests {
 
         let cache = CommonDependencyCache::new(cache_dir).unwrap();
         let result = cache.get_cached_flat_files(&PathBuf::from("/nonexistent"));
-        assert!(result.is_none(), "Corrupted file should result in empty cache");
+        assert!(
+            result.is_none(),
+            "Corrupted file should result in empty cache"
+        );
     }
 
     #[test]
@@ -808,7 +834,10 @@ mod tests {
 
         let cache = CommonDependencyCache::new(cache_dir).unwrap();
         let result = cache.get_cached_flat_files(&PathBuf::from("/nonexistent"));
-        assert!(result.is_none(), "Wrong version should result in empty cache");
+        assert!(
+            result.is_none(),
+            "Wrong version should result in empty cache"
+        );
     }
 
     #[test]
@@ -823,8 +852,16 @@ mod tests {
         fs::create_dir_all(&res_dir_b).unwrap();
 
         // Same content, same file names
-        create_temp_file(&res_dir_a, "colors.xml", b"<resources><color name=\"x\">#fff</color></resources>");
-        create_temp_file(&res_dir_b, "colors.xml", b"<resources><color name=\"x\">#fff</color></resources>");
+        create_temp_file(
+            &res_dir_a,
+            "colors.xml",
+            b"<resources><color name=\"x\">#fff</color></resources>",
+        );
+        create_temp_file(
+            &res_dir_b,
+            "colors.xml",
+            b"<resources><color name=\"x\">#fff</color></resources>",
+        );
 
         let flat_a = tmp.path().join("a.flat");
         let flat_b = tmp.path().join("b.flat");
@@ -843,7 +880,11 @@ mod tests {
         assert!(!needs_b, "Dir B unchanged -> no recompile");
 
         // Change a file in res_dir_a
-        fs::write(res_dir_a.join("colors.xml"), b"<resources><color name=\"x\">#000</color></resources>").unwrap();
+        fs::write(
+            res_dir_a.join("colors.xml"),
+            b"<resources><color name=\"x\">#000</color></resources>",
+        )
+        .unwrap();
 
         let needs_a2 = cache.needs_recompile(&res_dir_a).unwrap();
         assert!(needs_a2, "Changed dir should need recompile");

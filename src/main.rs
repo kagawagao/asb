@@ -36,14 +36,16 @@ async fn main() -> Result<()> {
         }
         match std::fs::File::create(log_path) {
             Ok(log_file) => {
-                let file_layer = fmt::layer()
-                    .with_writer(log_file)
-                    .with_ansi(false);
+                let file_layer = fmt::layer().with_writer(log_file).with_ansi(false);
                 subscriber.with(console_layer).with(file_layer).init();
                 return cli.run().await;
             }
             Err(e) => {
-                eprintln!("Warning: could not create log file '{}': {}", log_path.display(), e);
+                eprintln!(
+                    "Warning: could not create log file '{}': {}",
+                    log_path.display(),
+                    e
+                );
             }
         }
     }

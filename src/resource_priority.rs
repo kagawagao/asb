@@ -457,7 +457,10 @@ mod tests {
         // Main should still be the one in the map
         let files = tracker.get_final_flat_files();
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0], PathBuf::from("/build/main_values_colors.arsc.flat"));
+        assert_eq!(
+            files[0],
+            PathBuf::from("/build/main_values_colors.arsc.flat")
+        );
     }
 
     #[test]
@@ -649,7 +652,10 @@ mod tests {
         // Test Eq + PartialEq
         assert_eq!(ResourcePriority::Library(5), ResourcePriority::Library(5));
         assert_ne!(ResourcePriority::Library(5), ResourcePriority::Library(6));
-        assert_ne!(ResourcePriority::Library(0), ResourcePriority::Additional(0));
+        assert_ne!(
+            ResourcePriority::Library(0),
+            ResourcePriority::Additional(0)
+        );
         assert_ne!(ResourcePriority::Additional(0), ResourcePriority::Main);
     }
 }

@@ -444,8 +444,8 @@ impl Aapt2 {
         compiled_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         use std::fs::File;
-        use zip::CompressionMethod;
         use zip::write::{FileOptions, ZipWriter};
+        use zip::CompressionMethod;
 
         // Create temporary directory for ZIP files
         // Always use package-specific directory to ensure isolation in multi-task builds

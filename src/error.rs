@@ -22,7 +22,10 @@ pub enum AsbError {
     AndroidJarNotFound,
 
     #[error("Build failed for '{package}': {errors:?}")]
-    BuildFailed { package: String, errors: Vec<String> },
+    BuildFailed {
+        package: String,
+        errors: Vec<String>,
+    },
 
     #[error("Circular dependency detected in configuration")]
     CircularDependency,

@@ -993,13 +993,18 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
 
-        let result = Cli::save_failure_log("com.example.test", &["Error 1".to_string(), "Error 2".to_string()]);
+        let result = Cli::save_failure_log(
+            "com.example.test",
+            &["Error 1".to_string(), "Error 2".to_string()],
+        );
         std::env::set_current_dir(&original_dir).unwrap();
 
         assert!(result.is_ok());
         let log_path = result.unwrap();
         assert!(log_path.exists());
-        assert!(log_path.to_string_lossy().contains("build_failure_com.example.test_"));
+        assert!(log_path
+            .to_string_lossy()
+            .contains("build_failure_com.example.test_"));
 
         let content = std::fs::read_to_string(&log_path).unwrap();
         assert!(content.contains("Build Failure Log"));
@@ -1254,7 +1259,8 @@ mod tests {
 
     #[test]
     fn test_load_configs_nonexistent_file() {
-        let result = BuildConfig::load_configs(Some(PathBuf::from("/nonexistent/path/config.json")));
+        let result =
+            BuildConfig::load_configs(Some(PathBuf::from("/nonexistent/path/config.json")));
         assert!(result.is_err());
     }
 
@@ -1321,7 +1327,8 @@ mod tests {
                 precompiled_dependencies: None,
             },
         ];
-        let all_package_names: Vec<String> = configs.iter().map(|c| c.package_name.clone()).collect();
+        let all_package_names: Vec<String> =
+            configs.iter().map(|c| c.package_name.clone()).collect();
         let packages: Vec<String> = vec!["com.nonexistent".to_string()];
 
         let original_count = configs.len();
@@ -1574,10 +1581,8 @@ mod tests {
         let aar: Vec<PathBuf> = vec![];
         let incremental = false;
 
-        let has_cli_args = resource_dir.is_some()
-            || package.is_some()
-            || !aar.is_empty()
-            || incremental;
+        let has_cli_args =
+            resource_dir.is_some() || package.is_some() || !aar.is_empty() || incremental;
 
         assert!(!has_cli_args);
     }

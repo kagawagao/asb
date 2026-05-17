@@ -30,7 +30,11 @@ fn create_minimal_res_dir(base: &Path) -> PathBuf {
     let res_dir = base.join("res");
     let values_dir = res_dir.join("values");
     fs::create_dir_all(&values_dir).unwrap();
-    create_file(&values_dir, "colors.xml", b"<resources><color name=\"primary\">#FF0000</color></resources>");
+    create_file(
+        &values_dir,
+        "colors.xml",
+        b"<resources><color name=\"primary\">#FF0000</color></resources>",
+    );
     res_dir
 }
 
@@ -106,7 +110,13 @@ fn test_skin_builder_new_incremental_false() {
 fn test_skin_builder_new_with_cache_dir() {
     let tmp = TempDir::new().unwrap();
     let cache_dir = tmp.path().join("custom_cache");
-    let config = test_config(&tmp, "com.test.cached", Some(true), Some(cache_dir.clone()), None);
+    let config = test_config(
+        &tmp,
+        "com.test.cached",
+        Some(true),
+        Some(cache_dir.clone()),
+        None,
+    );
     let builder = SkinBuilder::new(config).unwrap();
     assert!(builder.cache.is_some(), "Cache should be created");
     assert!(
@@ -119,7 +129,13 @@ fn test_skin_builder_new_with_cache_dir() {
 fn test_skin_builder_new_with_build_dir() {
     let tmp = TempDir::new().unwrap();
     let build_dir = tmp.path().join("custom_build");
-    let config = test_config(&tmp, "com.test.bd", Some(true), None, Some(build_dir.clone()));
+    let config = test_config(
+        &tmp,
+        "com.test.bd",
+        Some(true),
+        None,
+        Some(build_dir.clone()),
+    );
     let builder = SkinBuilder::new(config).unwrap();
     assert!(builder.cache.is_some(), "Cache should be created");
     assert!(
@@ -158,7 +174,11 @@ fn test_skin_builder_new_default_cache_location() {
     assert!(builder.cache.is_some(), "Cache should be created");
 
     // Default location: output_dir/.build/<package_name>
-    let default_cache = tmp.path().join("output").join(".build").join("com.test.default");
+    let default_cache = tmp
+        .path()
+        .join("output")
+        .join(".build")
+        .join("com.test.default");
     assert!(
         default_cache.exists(),
         "Cache should default to output_dir/.build/<package_name>"
@@ -192,7 +212,10 @@ fn test_build_cache_lifecycle_new_init_save_clear() {
 
     // Save persists
     cache.save().unwrap();
-    assert!(cache_dir.join("build-cache.json").exists(), "Cache file should be saved");
+    assert!(
+        cache_dir.join("build-cache.json").exists(),
+        "Cache file should be saved"
+    );
 
     // Clear removes everything
     cache.clear().unwrap();
@@ -255,10 +278,22 @@ fn test_build_cache_multiple_entries() {
     cache.init().unwrap();
 
     let sources: Vec<_> = (0..10)
-        .map(|i| create_file(tmp.path(), &format!("file_{}.xml", i), format!("v{}", i).as_bytes()))
+        .map(|i| {
+            create_file(
+                tmp.path(),
+                &format!("file_{}.xml", i),
+                format!("v{}", i).as_bytes(),
+            )
+        })
         .collect();
     let flats: Vec<_> = (0..10)
-        .map(|i| create_file(tmp.path(), &format!("file_{}.flat", i), format!("fv{}", i).as_bytes()))
+        .map(|i| {
+            create_file(
+                tmp.path(),
+                &format!("file_{}.flat", i),
+                format!("fv{}", i).as_bytes(),
+            )
+        })
         .collect();
 
     // Add all entries
@@ -290,7 +325,8 @@ fn test_build_cache_multiple_entries() {
         if i != 5 {
             assert!(
                 !cache.needs_recompile(s).unwrap(),
-                "File {} should not need recompile", i
+                "File {} should not need recompile",
+                i
             );
         }
     }
@@ -307,7 +343,10 @@ fn test_build_cache_edge_cases() {
     let empty = create_file(tmp.path(), "empty.xml", b"");
     let flat_empty = create_file(tmp.path(), "empty.flat", b"");
     cache.update_entry(&empty, &flat_empty).unwrap();
-    assert!(!cache.needs_recompile(&empty).unwrap(), "Empty file should hash consistently");
+    assert!(
+        !cache.needs_recompile(&empty).unwrap(),
+        "Empty file should hash consistently"
+    );
 
     // Binary file
     let binary = create_file(tmp.path(), "data.bin", &[0x00, 0x01, 0x02, 0xFF]);
