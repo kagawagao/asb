@@ -378,8 +378,16 @@ fn test_common_dep_cache_lifecycle() {
     // Create resource directory with files
     let res_dir = tmp.path().join("res");
     fs::create_dir_all(&res_dir).unwrap();
-    create_file(&res_dir, "colors.xml", b"<resources><color name=\"x\">#fff</color></resources>");
-    create_file(&res_dir, "dimens.xml", b"<resources><dimen name=\"y\">10dp</dimen></resources>");
+    create_file(
+        &res_dir,
+        "colors.xml",
+        b"<resources><color name=\"x\">#fff</color></resources>",
+    );
+    create_file(
+        &res_dir,
+        "dimens.xml",
+        b"<resources><dimen name=\"y\">10dp</dimen></resources>",
+    );
 
     let flats: Vec<_> = ["colors.flat", "dimens.flat"]
         .iter()
@@ -455,7 +463,11 @@ fn test_common_dep_cache_multiple_directories() {
     fs::create_dir_all(&dir1).unwrap();
     fs::create_dir_all(&dir2).unwrap();
 
-    create_file(&dir1, "colors.xml", b"<resources><color name=\"a\">#aaa</color></resources>");
+    create_file(
+        &dir1,
+        "colors.xml",
+        b"<resources><color name=\"a\">#aaa</color></resources>",
+    );
     create_file(&dir2, "shapes.xml", b"<resources/>");
 
     let flat1 = create_file(tmp.path(), "res1.flat", b"f1");
@@ -535,7 +547,8 @@ fn test_common_dep_cache_corrupted_recovery() {
     fs::write(&cache_file, b"\x00\x01\x02 not json").unwrap();
     let cache = CommonDependencyCache::new(cache_dir.clone()).unwrap();
     assert!(
-        cache.get_cached_flat_files(&PathBuf::from("/fake"))
+        cache
+            .get_cached_flat_files(&PathBuf::from("/fake"))
             .is_none(),
         "Corrupted file should yield empty cache"
     );
