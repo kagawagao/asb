@@ -1,40 +1,11 @@
-#[allow(
-    clippy::collapsible_if,
-    clippy::too_many_arguments,
-    clippy::unnecessary_sort_by
-)]
 mod aapt2;
 mod aar;
-#[allow(
-    clippy::collapsible_if,
-    clippy::unnecessary_map_or,
-    clippy::single_char_add_str,
-    clippy::useless_asref
-)]
 mod builder;
 mod cache;
-#[allow(
-    clippy::large_enum_variant,
-    clippy::redundant_closure,
-    clippy::too_many_arguments,
-    clippy::type_complexity
-)]
 mod cli;
-#[allow(clippy::cmp_owned, clippy::unwrap_or_default)]
 mod dependency;
 mod error;
-#[allow(
-    clippy::collapsible_if,
-    clippy::new_without_default,
-    clippy::unwrap_or_default
-)]
 mod resource_priority;
-#[allow(
-    clippy::collapsible_if,
-    clippy::needless_borrow,
-    clippy::ptr_arg,
-    clippy::too_many_arguments
-)]
 mod types;
 
 use anyhow::Result;
@@ -55,7 +26,7 @@ async fn main() -> Result<()> {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
 
     // Build subscriber layers
-    let console_layer = fmt::layer().with_writer(std::io::stderr).with_ansi(true);
+    let console_layer = fmt::layer().with_writer(std::io::stdout).with_ansi(true);
     let subscriber = tracing_subscriber::registry().with(env_filter);
 
     // Add file layer if --log-file is specified
@@ -68,14 +39,14 @@ async fn main() -> Result<()> {
                 let file_layer = fmt::layer().with_writer(log_file).with_ansi(false);
                 subscriber.with(console_layer).with(file_layer).init();
                 return cli.run().await;
-            }
+            },
             Err(e) => {
                 eprintln!(
                     "Warning: could not create log file '{}': {}",
                     log_path.display(),
                     e
                 );
-            }
+            },
         }
     }
 

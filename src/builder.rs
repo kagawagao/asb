@@ -347,7 +347,7 @@ impl SkinBuilder {
                         priority
                     );
                     base_flat_files.extend(files.clone());
-                }
+                },
                 ResourcePriority::Additional(_) => {
                     // Additional resources are base (medium priority)
                     debug!(
@@ -357,7 +357,7 @@ impl SkinBuilder {
                         priority
                     );
                     base_flat_files.extend(files.clone());
-                }
+                },
                 ResourcePriority::Main => {
                     // Main resources are overlay (highest priority)
                     debug!(
@@ -367,7 +367,7 @@ impl SkinBuilder {
                         priority
                     );
                     overlay_flat_files.push(files.clone());
-                }
+                },
             }
         }
 
