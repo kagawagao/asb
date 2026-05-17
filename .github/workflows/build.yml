@@ -1,4 +1,4 @@
-name: Build Multi-Platform Binaries
+name: Build & Test Multi-Platform Binaries
 
 on:
   push:
@@ -11,8 +11,35 @@ permissions:
   contents: read
 
 jobs:
+  # ── Quality checks (fast, run first) ──────────────────────────
+  quality:
+    name: Lint & Format & Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run cargo fmt
+      run: cargo fmt --all -- --check
+
+    - name: Run cargo clippy
+      run: cargo clippy --all-targets -- -D warnings
+
+    - name: Run cargo test
+      run: cargo test --all-targets
+
+  # ── Build matrix ──────────────────────────────────────────────
   build:
     name: Build on ${{ matrix.os }} - ${{ matrix.target }}
+    needs: quality
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     strategy:

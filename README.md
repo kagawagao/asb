@@ -652,54 +652,39 @@ asb build --aapt2 /path/to/aapt2 ...
 asb build --config asb.config.json --max-parallel-builds 1
 ```
 
-## Development / 开发
+## Development
 
-### 构建
+### Running Tests
 
 ```bash
-cargo build --release
+cargo test --all-targets
 ```
 
-### 运行测试
+### Code Quality
 
 ```bash
-cargo test
-```
-
-### 格式化代码
-
-```bash
-cargo fmt
-```
-
-### Lint
-
-```bash
-cargo clippy
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
 ```
 
 ### CI/CD
 
-The project includes GitHub Actions workflows for continuous integration and deployment:
+CI runs on every PR:
+- Quality gate: fmt, clippy, tests
+- Build matrix: 7 platforms (Linux/Mac/Windows, x86_64/ARM64)
+- Binary validation
 
-- **Build Workflow** (`.github/workflows/build.yml`): 
-  - Automatically builds binaries for multiple platforms on every push and pull request
-  - Platforms: Linux (x64, ARM64), Debian 11 (x64), macOS (x64, ARM64), Windows (x64, ARM64)
-  - Tests binary execution on each platform
-  - Uploads artifacts for each build
+### Project Structure
 
-- **Release Workflow** (`.github/workflows/release.yml`):
-  - Triggers on version tags (e.g., `v2.0.0`)
-  - Builds binaries for all platforms
-  - Creates compressed archives (`.tar.gz` for Unix, `.zip` for Windows)
-  - Automatically creates a GitHub release with all binaries attached
-
-To create a new release:
-
-```bash
-git tag v2.0.1
-git push origin v2.0.1
-```
+- `src/builder.rs` — Core build orchestrator
+- `src/aapt2.rs` — aapt2 CLI wrapper
+- `src/aar.rs` — AAR extraction
+- `src/cache.rs` — Incremental build cache (SHA-256)
+- `src/types.rs` — Configuration types
+- `src/cli.rs` — CLI argument parsing
+- `src/resource_priority.rs` — Android resource priority resolution
+- `src/dependency.rs` — Dependency graph analysis
+- `src/merge.rs` — Manifest merging
 
 ## License
 

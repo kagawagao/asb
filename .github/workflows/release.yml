@@ -90,24 +90,33 @@ jobs:
       if: runner.os != 'Windows'
       shell: bash
       run: |
-        cd target/${{ matrix.target }}/release
-        cp ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
-        tar czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.asset_name }}
+        cd "target/${{ matrix.target }}/release"
+        cp "${{ matrix.artifact_name }}" "${{ matrix.asset_name }}"
+        tar czf "${{ matrix.asset_name }}.tar.gz" "${{ matrix.asset_name }}"
+        if [ "${{ runner.os }}" = "macOS" ]; then
+          shasum -a 256 "${{ matrix.asset_name }}.tar.gz" > "${{ matrix.asset_name }}.tar.gz.sha256"
+        else
+          sha256sum "${{ matrix.asset_name }}.tar.gz" > "${{ matrix.asset_name }}.tar.gz.sha256"
+        fi
 
     - name: Rename and compress binary (Windows)
       if: runner.os == 'Windows'
-      shell: bash
+      shell: pwsh
       run: |
-        cd target/${{ matrix.target }}/release
-        cp ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
-        7z a ${{ matrix.asset_name }}.zip ${{ matrix.asset_name }}
+        Set-Location "target/${{ matrix.target }}/release"
+        Copy-Item "${{ matrix.artifact_name }}" "${{ matrix.asset_name }}"
+        7z a "${{ matrix.asset_name }}.zip" "${{ matrix.asset_name }}"
+        $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset_name }}.zip").Hash.ToLower()
+        "$hash  ${{ matrix.asset_name }}.zip" | Out-File -Encoding ascii "${{ matrix.asset_name }}.zip.sha256"
 
     - name: Upload artifact (Unix)
       if: runner.os != 'Windows'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.asset_name }}-archive
-        path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz
+        path: |
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz.sha256
         if-no-files-found: error
 
     - name: Upload artifact (Windows)
@@ -115,7 +124,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.asset_name }}-archive
-        path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}.zip
+        path: |
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.zip
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.zip.sha256
         if-no-files-found: error
 
   release:
@@ -139,7 +150,9 @@ jobs:
       with:
         files: |
           artifacts/**/*.tar.gz
+          artifacts/**/*.tar.gz.sha256
           artifacts/**/*.zip
+          artifacts/**/*.zip.sha256
         draft: false
         prerelease: false
         generate_release_notes: true

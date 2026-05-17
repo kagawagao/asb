@@ -210,10 +210,10 @@ pub fn find_resources_with_priority(
         let source_path = entry.path();
 
         // Skip hidden files and system files
-        if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with('.') || name == "Thumbs.db" {
-                continue;
-            }
+        if let Some(name) = source_path.file_name().and_then(|n| n.to_str())
+            && (name.starts_with('.') || name == "Thumbs.db")
+        {
+            continue;
         }
 
         // Normalize the resource path for comparison
@@ -272,10 +272,10 @@ fn find_matching_flat_file(source_path: &Path, flat_files: &[PathBuf]) -> Option
             if flat_name.starts_with(parent_name) {
                 // And contains the file name (without extension for values)
                 if parent_name.starts_with("values") {
-                    if let Some(stem) = source_path.file_stem().and_then(|s| s.to_str()) {
-                        if flat_name.contains(stem) {
-                            return Some(flat_file.clone());
-                        }
+                    if let Some(stem) = source_path.file_stem().and_then(|s| s.to_str())
+                        && flat_name.contains(stem)
+                    {
+                        return Some(flat_file.clone());
                     }
                 } else {
                     if flat_name.contains(file_name) {
@@ -341,5 +341,322 @@ mod tests {
 
         assert!(tracker.add_resource(main));
         assert_eq!(tracker.stats(), (1, 2)); // Still 1 resource, 2 conflicts
+    }
+
+    #[test]
+    fn test_priority_value_boundaries() {
+        // Library(0) = 0, Library(999) = 999
+        assert_eq!(ResourcePriority::Library(0).value(), 0);
+        assert_eq!(ResourcePriority::Library(999).value(), 999);
+
+        // Additional(0) = 1000, Additional(999) = 1999
+        assert_eq!(ResourcePriority::Additional(0).value(), 1000);
+        assert_eq!(ResourcePriority::Additional(999).value(), 1999);
+
+        // Main = 2000
+        assert_eq!(ResourcePriority::Main.value(), 2000);
+    }
+
+    #[test]
+    fn test_priority_partial_ord() {
+        // Verify derived PartialOrd works with enum ordering
+        assert!(ResourcePriority::Library(5) < ResourcePriority::Library(10));
+        assert!(ResourcePriority::Library(999) < ResourcePriority::Additional(0));
+        assert!(ResourcePriority::Additional(999) < ResourcePriority::Main);
+        assert!(ResourcePriority::Main > ResourcePriority::Additional(0));
+        assert!(ResourcePriority::Main > ResourcePriority::Library(0));
+        // Additional wins over Library with any index
+        assert!(ResourcePriority::Additional(0) > ResourcePriority::Library(999));
+    }
+
+    #[test]
+    fn test_tracker_empty() {
+        let tracker = ResourcePriorityTracker::new();
+        assert_eq!(tracker.stats(), (0, 0));
+        let flat_files = tracker.get_final_flat_files();
+        assert!(flat_files.is_empty());
+    }
+
+    #[test]
+    fn test_add_resource_no_conflict() {
+        let mut tracker = ResourcePriorityTracker::new();
+
+        let res1 = ResourceInfo {
+            source_path: PathBuf::from("/main/res/layout/main.xml"),
+            flat_file: PathBuf::from("/build/layout_main.xml.flat"),
+            resource_dir: PathBuf::from("/main/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/layout/main.xml".to_string(),
+        };
+        assert!(!tracker.add_resource(res1));
+
+        let res2 = ResourceInfo {
+            source_path: PathBuf::from("/main/res/drawable/icon.png"),
+            flat_file: PathBuf::from("/build/drawable_icon.png.flat"),
+            resource_dir: PathBuf::from("/main/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/drawable/icon.png".to_string(),
+        };
+        assert!(!tracker.add_resource(res2));
+
+        assert_eq!(tracker.stats(), (2, 0));
+    }
+
+    #[test]
+    fn test_same_priority_conflict() {
+        let mut tracker = ResourcePriorityTracker::new();
+
+        let res1 = ResourceInfo {
+            source_path: PathBuf::from("/a/res/drawable/icon.png"),
+            flat_file: PathBuf::from("/build/a_drawable_icon.png.flat"),
+            resource_dir: PathBuf::from("/a/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/drawable/icon.png".to_string(),
+        };
+        assert!(!tracker.add_resource(res1));
+
+        // Same priority, same path — should NOT override
+        let res2 = ResourceInfo {
+            source_path: PathBuf::from("/b/res/drawable/icon.png"),
+            flat_file: PathBuf::from("/build/b_drawable_icon.png.flat"),
+            resource_dir: PathBuf::from("/b/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/drawable/icon.png".to_string(),
+        };
+        assert!(!tracker.add_resource(res2));
+
+        // Still only 1 resource (first one wins on equal priority)
+        // Equal-priority conflicts are not tracked in conflicts vec
+        assert_eq!(tracker.stats(), (1, 0));
+    }
+
+    #[test]
+    fn test_lower_priority_loses() {
+        let mut tracker = ResourcePriorityTracker::new();
+
+        // Add Main first (highest priority)
+        let main = ResourceInfo {
+            source_path: PathBuf::from("/main/res/values/colors.xml"),
+            flat_file: PathBuf::from("/build/main_values_colors.arsc.flat"),
+            resource_dir: PathBuf::from("/main/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/values/colors.xml".to_string(),
+        };
+        assert!(!tracker.add_resource(main));
+
+        // Lower priority should NOT override
+        let lib = ResourceInfo {
+            source_path: PathBuf::from("/lib/res/values/colors.xml"),
+            flat_file: PathBuf::from("/build/lib_values_colors.arsc.flat"),
+            resource_dir: PathBuf::from("/lib/res"),
+            priority: ResourcePriority::Library(0),
+            normalized_path: "res/values/colors.xml".to_string(),
+        };
+        assert!(!tracker.add_resource(lib));
+
+        assert_eq!(tracker.stats(), (1, 1));
+        // Main should still be the one in the map
+        let files = tracker.get_final_flat_files();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0],
+            PathBuf::from("/build/main_values_colors.arsc.flat")
+        );
+    }
+
+    #[test]
+    fn test_get_final_flat_files_ordering() {
+        let mut tracker = ResourcePriorityTracker::new();
+
+        // Add in reverse priority order
+        let main = ResourceInfo {
+            source_path: PathBuf::from("/main/res/values/strings.xml"),
+            flat_file: PathBuf::from("/build/main_strings.arsc.flat"),
+            resource_dir: PathBuf::from("/main/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/values/strings.xml".to_string(),
+        };
+        tracker.add_resource(main);
+
+        let additional = ResourceInfo {
+            source_path: PathBuf::from("/add/res/drawable/icon.png"),
+            flat_file: PathBuf::from("/build/add_icon.png.flat"),
+            resource_dir: PathBuf::from("/add/res"),
+            priority: ResourcePriority::Additional(0),
+            normalized_path: "res/drawable/icon.png".to_string(),
+        };
+        tracker.add_resource(additional);
+
+        let lib = ResourceInfo {
+            source_path: PathBuf::from("/lib/res/layout/main.xml"),
+            flat_file: PathBuf::from("/build/lib_layout.xml.flat"),
+            resource_dir: PathBuf::from("/lib/res"),
+            priority: ResourcePriority::Library(0),
+            normalized_path: "res/layout/main.xml".to_string(),
+        };
+        tracker.add_resource(lib);
+
+        // Files should be sorted by priority (lowest first)
+        let files = tracker.get_final_flat_files();
+        assert_eq!(files.len(), 3);
+        assert_eq!(files[0], PathBuf::from("/build/lib_layout.xml.flat"));
+        assert_eq!(files[1], PathBuf::from("/build/add_icon.png.flat"));
+        assert_eq!(files[2], PathBuf::from("/build/main_strings.arsc.flat"));
+    }
+
+    #[test]
+    fn test_normalize_resource_path_basic() {
+        let resource_file = Path::new("/home/project/src/main/res/drawable/icon.png");
+        let resource_dir = Path::new("/home/project/src/main/res");
+        let result = normalize_resource_path(resource_file, resource_dir).unwrap();
+        assert_eq!(result, "res/drawable/icon.png");
+    }
+
+    #[test]
+    fn test_normalize_resource_path_values() {
+        let resource_file = Path::new("/project/res/values/strings.xml");
+        let resource_dir = Path::new("/project/res");
+        let result = normalize_resource_path(resource_file, resource_dir).unwrap();
+        assert_eq!(result, "res/values/strings.xml");
+    }
+
+    #[test]
+    fn test_normalize_resource_path_qualified() {
+        let resource_file = Path::new("/app/res/values-en/strings.xml");
+        let resource_dir = Path::new("/app/res");
+        let result = normalize_resource_path(resource_file, resource_dir).unwrap();
+        assert_eq!(result, "res/values-en/strings.xml");
+    }
+
+    #[test]
+    fn test_normalize_resource_path_not_under_dir() {
+        let resource_file = Path::new("/other/project/res/icon.png");
+        let resource_dir = Path::new("/home/project/res");
+        let result = normalize_resource_path(resource_file, resource_dir);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_normalize_resource_path_backslash() {
+        // Paths with backslashes (Windows-style, already normalized by Rust Path)
+        let resource_file = Path::new("/proj/res/drawable-hdpi\\icon.png");
+        let resource_dir = Path::new("/proj/res");
+        let result = normalize_resource_path(resource_file, resource_dir).unwrap();
+        // Backslashes in the relative path get normalized to forward slashes
+        assert_eq!(result, "res/drawable-hdpi/icon.png");
+    }
+
+    #[test]
+    fn test_find_matching_flat_file_layout() {
+        let source = Path::new("/proj/res/layout/activity_main.xml");
+        let flat_files = vec![
+            PathBuf::from("/build/layout_activity_main.xml.flat"),
+            PathBuf::from("/build/drawable_icon.png.flat"),
+        ];
+        let result = find_matching_flat_file(source, &flat_files);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap(),
+            PathBuf::from("/build/layout_activity_main.xml.flat")
+        );
+    }
+
+    #[test]
+    fn test_find_matching_flat_file_values() {
+        let source = Path::new("/proj/res/values/strings.xml");
+        let flat_files = vec![
+            PathBuf::from("/build/values_strings.arsc.flat"),
+            PathBuf::from("/build/drawable_icon.png.flat"),
+        ];
+        let result = find_matching_flat_file(source, &flat_files);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap(),
+            PathBuf::from("/build/values_strings.arsc.flat")
+        );
+    }
+
+    #[test]
+    fn test_find_matching_flat_file_not_found() {
+        let source = Path::new("/proj/res/layout/missing.xml");
+        let flat_files = vec![PathBuf::from("/build/drawable_icon.png.flat")];
+        let result = find_matching_flat_file(source, &flat_files);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_matching_flat_file_empty_flat_files() {
+        let source = Path::new("/proj/res/drawable/icon.png");
+        let flat_files: Vec<PathBuf> = vec![];
+        let result = find_matching_flat_file(source, &flat_files);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_resources_with_priority_empty_dir() {
+        let non_existent = Path::new("/non/existent/dir");
+        let flat_files: Vec<PathBuf> = vec![];
+        let result =
+            find_resources_with_priority(non_existent, &flat_files, ResourcePriority::Main)
+                .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_conflict_logging_empty() {
+        let tracker = ResourcePriorityTracker::new();
+        // log_conflicts should not panic on empty conflicts
+        tracker.log_conflicts();
+    }
+
+    #[test]
+    fn test_conflict_logging_with_conflicts() {
+        let mut tracker = ResourcePriorityTracker::new();
+
+        let lib = ResourceInfo {
+            source_path: PathBuf::from("/lib/res/icon.png"),
+            flat_file: PathBuf::from("/build/lib_icon.flat"),
+            resource_dir: PathBuf::from("/lib/res"),
+            priority: ResourcePriority::Library(0),
+            normalized_path: "res/icon.png".to_string(),
+        };
+        tracker.add_resource(lib);
+
+        let main = ResourceInfo {
+            source_path: PathBuf::from("/main/res/icon.png"),
+            flat_file: PathBuf::from("/build/main_icon.flat"),
+            resource_dir: PathBuf::from("/main/res"),
+            priority: ResourcePriority::Main,
+            normalized_path: "res/icon.png".to_string(),
+        };
+        tracker.add_resource(main);
+
+        // Should not panic
+        tracker.log_conflicts();
+        assert_eq!(tracker.stats(), (1, 1));
+    }
+
+    #[test]
+    fn test_priority_derive_traits() {
+        // Test Clone
+        let p1 = ResourcePriority::Library(5);
+        let p2 = p1;
+        assert_eq!(p1, p2);
+
+        // Test Copy
+        let p3 = p1;
+        assert_eq!(p1, p3);
+
+        // Test Debug (compile-time check)
+        let _ = format!("{:?}", ResourcePriority::Main);
+
+        // Test Eq + PartialEq
+        assert_eq!(ResourcePriority::Library(5), ResourcePriority::Library(5));
+        assert_ne!(ResourcePriority::Library(5), ResourcePriority::Library(6));
+        assert_ne!(
+            ResourcePriority::Library(0),
+            ResourcePriority::Additional(0)
+        );
+        assert_ne!(ResourcePriority::Additional(0), ResourcePriority::Main);
     }
 }

@@ -4,12 +4,13 @@ mod builder;
 mod cache;
 mod cli;
 mod dependency;
+mod error;
 mod resource_priority;
 mod types;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use cli::Cli;
 
@@ -24,15 +25,33 @@ async fn main() -> Result<()> {
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
 
-    // Create log file
-    // let log_file = File::create("asb.log")?;
+    // Build subscriber layers
+    let console_layer = fmt::layer().with_writer(std::io::stdout).with_ansi(true);
+    let subscriber = tracing_subscriber::registry().with(env_filter);
 
-    // Configure multi-layer logging: console + file
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt::layer().with_writer(std::io::stdout).with_ansi(true))
-        // .with(fmt::layer().with_writer(log_file).with_ansi(false))
-        .init();
+    // Add file layer if --log-file is specified
+    if let Some(ref log_path) = cli.log_file {
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::File::create(log_path) {
+            Ok(log_file) => {
+                let file_layer = fmt::layer().with_writer(log_file).with_ansi(false);
+                subscriber.with(console_layer).with(file_layer).init();
+                return cli.run().await;
+            }
+            Err(e) => {
+                eprintln!(
+                    "Warning: could not create log file '{}': {}",
+                    log_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Fallback: console only
+    subscriber.with(console_layer).init();
 
     cli.run().await
 }

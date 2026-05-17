@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::aapt2::DEFAULT_PACKAGE_ID;
@@ -19,19 +19,19 @@ fn find_highest_android_jar() -> Option<PathBuf> {
 
     if let Ok(entries) = std::fs::read_dir(&platforms_dir) {
         for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    let dir_name = entry.file_name();
-                    let dir_name_str = dir_name.to_string_lossy();
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_dir()
+            {
+                let dir_name = entry.file_name();
+                let dir_name_str = dir_name.to_string_lossy();
 
-                    // Extract version from "android-XX" format
-                    if let Some(version_str) = dir_name_str.strip_prefix("android-") {
-                        if let Ok(version) = version_str.parse::<u32>() {
-                            let android_jar = entry.path().join("android.jar");
-                            if android_jar.exists() {
-                                versions.push((version, android_jar));
-                            }
-                        }
+                // Extract version from "android-XX" format
+                if let Some(version_str) = dir_name_str.strip_prefix("android-")
+                    && let Ok(version) = version_str.parse::<u32>()
+                {
+                    let android_jar = entry.path().join("android.jar");
+                    if android_jar.exists() {
+                        versions.push((version, android_jar));
                     }
                 }
             }
@@ -262,7 +262,7 @@ impl MultiAppConfig {
                 for flavor in flavors {
                     result.push(Self::create_build_config_for_flavor_static(
                         &app,
-                        &flavor,
+                        flavor,
                         &common_base_dir,
                         &common_output_dir,
                         &common_output_file,
@@ -307,7 +307,7 @@ impl MultiAppConfig {
     fn create_build_config_static(
         app: &AppConfig,
         common_base_dir: &Option<PathBuf>,
-        common_output_dir: &PathBuf,
+        common_output_dir: &Path,
         common_output_file: &Option<String>,
         common_android_jar: &Option<PathBuf>,
         common_aapt2_path: &Option<PathBuf>,
@@ -343,7 +343,7 @@ impl MultiAppConfig {
             output_dir: app
                 .output_dir
                 .clone()
-                .unwrap_or_else(|| common_output_dir.clone()),
+                .unwrap_or_else(|| common_output_dir.to_path_buf()),
             output_file: app
                 .output_file
                 .clone()
@@ -374,7 +374,7 @@ impl MultiAppConfig {
         app: &AppConfig,
         flavor: &FlavorConfig,
         common_base_dir: &Option<PathBuf>,
-        common_output_dir: &PathBuf,
+        common_output_dir: &Path,
         common_output_file: &Option<String>,
         common_android_jar: &Option<PathBuf>,
         common_aapt2_path: &Option<PathBuf>,
@@ -436,7 +436,7 @@ impl MultiAppConfig {
                 .output_dir
                 .clone()
                 .or_else(|| app.output_dir.clone())
-                .unwrap_or_else(|| common_output_dir.clone()),
+                .unwrap_or_else(|| common_output_dir.to_path_buf()),
             output_file,
             package_name,
             aapt2_path: common_aapt2_path.clone(),
@@ -673,9 +673,12 @@ impl BuildConfig {
     }
 
     /// Load configuration from file or use defaults
-    /// Priority: explicit config file > asb.config.json in current dir > built-in defaults
+    /// Priority: explicit config file > asb.config.json in base_dir > built-in defaults
     #[allow(dead_code)]
-    pub fn load_or_default(config_file: Option<PathBuf>) -> anyhow::Result<Self> {
+    pub fn load_or_default(
+        config_file: Option<PathBuf>,
+        base_dir: Option<&Path>,
+    ) -> anyhow::Result<Self> {
         // If explicit config file is provided, use it
         if let Some(config_path) = config_file {
             let content = std::fs::read_to_string(&config_path)?;
@@ -684,8 +687,9 @@ impl BuildConfig {
             return Ok(config);
         }
 
-        // Check for asb.config.json in current directory
-        let default_config_path = PathBuf::from("./asb.config.json");
+        // Check for asb.config.json under base_dir (or cwd if None)
+        let base = base_dir.unwrap_or_else(|| Path::new("."));
+        let default_config_path = base.join("asb.config.json");
         if default_config_path.exists() {
             let content = std::fs::read_to_string(&default_config_path)?;
             let mut config: Self = serde_json::from_str(&content)?;
@@ -702,12 +706,16 @@ impl BuildConfig {
     /// 1. Multi-app object format (new): { "outputDir": "...", "androidJar": "...", "apps": [...] }
     /// 2. Array format: [{ config1 }, { config2 }]
     /// 3. Single object format: { "resourceDir": "...", ... }
-    pub fn load_configs(config_file: Option<PathBuf>) -> anyhow::Result<LoadedConfigs> {
+    pub fn load_configs(
+        config_file: Option<PathBuf>,
+        base_dir: Option<&Path>,
+    ) -> anyhow::Result<LoadedConfigs> {
         // Determine which config file to use
         let config_path = if let Some(path) = config_file {
             path
         } else {
-            let default_path = PathBuf::from("./asb.config.json");
+            let base = base_dir.unwrap_or_else(|| Path::new("."));
+            let default_path = base.join("asb.config.json");
             if default_path.exists() {
                 default_path
             } else {
@@ -863,7 +871,7 @@ pub struct AarInfo {
 }
 
 /// Build result
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct BuildResult {
     pub success: bool,
     pub apk_path: Option<PathBuf>,

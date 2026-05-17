@@ -58,7 +58,7 @@ pub fn group_configs_by_dependencies(
         let main_res = normalize_path(&config.resource_dir);
         resource_dir_to_configs
             .entry(main_res)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(idx);
 
         // Register additional resource directories if present
@@ -67,7 +67,7 @@ pub fn group_configs_by_dependencies(
                 let normalized = normalize_path(dir);
                 resource_dir_to_configs
                     .entry(normalized)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(idx);
             }
         }
@@ -194,10 +194,7 @@ fn topological_sort(
     // We need: dependency -> dependents for topological sort
     for (dependent, deps) in dependencies {
         for &dependency in deps {
-            adj_list
-                .entry(dependency)
-                .or_insert_with(Vec::new)
-                .push(*dependent);
+            adj_list.entry(dependency).or_default().push(*dependent);
             in_degree[*dependent] += 1;
         }
     }
@@ -311,6 +308,7 @@ pub fn extract_common_dependencies(configs: &[BuildConfig]) -> Vec<CommonDepende
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     // Helper function to create a test config with minimal required fields
     fn test_config(
@@ -529,10 +527,10 @@ mod tests {
         // Check that both are found (order may vary)
         let core_dep = common_deps
             .iter()
-            .find(|d| d.resource_dir == PathBuf::from("./core/res"));
+            .find(|d| d.resource_dir == Path::new("./core/res"));
         let shared_dep = common_deps
             .iter()
-            .find(|d| d.resource_dir == PathBuf::from("./shared/res"));
+            .find(|d| d.resource_dir == Path::new("./shared/res"));
 
         assert!(core_dep.is_some());
         assert!(shared_dep.is_some());
@@ -766,10 +764,10 @@ mod tests {
         // Check that both night and day resources are found
         let night_dep = common_deps
             .iter()
-            .find(|d| d.resource_dir == PathBuf::from("./night/src/main/res"));
+            .find(|d| d.resource_dir == Path::new("./night/src/main/res"));
         let day_dep = common_deps
             .iter()
-            .find(|d| d.resource_dir == PathBuf::from("./day/src/main/res"));
+            .find(|d| d.resource_dir == Path::new("./day/src/main/res"));
 
         assert!(
             night_dep.is_some(),
