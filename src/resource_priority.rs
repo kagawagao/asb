@@ -114,6 +114,8 @@ impl ResourcePriorityTracker {
                     info.source_path.display(),
                     existing.source_path.display()
                 );
+                self.conflicts
+                    .push((normalized.clone(), existing.clone(), info.clone()));
                 return false;
             }
         }
