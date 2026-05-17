@@ -1,4 +1,9 @@
-#![allow(clippy::too_many_arguments, clippy::collapsible_if, clippy::cmp_owned, clippy::unwrap_or_default)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::collapsible_if,
+    clippy::cmp_owned,
+    clippy::unwrap_or_default
+)]
 
 mod aapt2;
 mod aar;
