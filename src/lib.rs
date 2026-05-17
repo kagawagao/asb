@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments, clippy::collapsible_if, clippy::cmp_owned, clippy::unwrap_or_default)]
+
 pub mod aapt2;
 pub mod aar;
 pub mod builder;
