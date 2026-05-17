@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
 
     // Build subscriber layers
-    let console_layer = fmt::layer().with_writer(std::io::stdout).with_ansi(true);
+    let console_layer = fmt::layer().with_writer(std::io::stderr).with_ansi(true);
     let subscriber = tracing_subscriber::registry().with(env_filter);
 
     // Add file layer if --log-file is specified

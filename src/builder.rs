@@ -103,9 +103,9 @@ fn create_minimal_manifest(package_name: &str, compiled_dir: &Path) -> Result<Pa
 
 /// Main builder for Android skin packages
 pub struct SkinBuilder {
-    pub config: BuildConfig,
+    config: BuildConfig,
     aapt2: Aapt2,
-    pub cache: Option<BuildCache>,
+    cache: Option<BuildCache>,
 }
 
 impl SkinBuilder {
@@ -136,6 +136,11 @@ impl SkinBuilder {
             aapt2,
             cache,
         })
+    }
+
+    /// Returns whether incremental build cache is enabled for this builder.
+    pub fn has_cache(&self) -> bool {
+        self.cache.is_some()
     }
 
     /// Build the skin package
@@ -520,7 +525,7 @@ impl SkinBuilder {
         compiled_dir: &Path,
     ) -> Result<Vec<PathBuf>> {
         // If incremental build is disabled or no cache, compile all files together
-        if self.cache.is_none() {
+        if !self.has_cache() {
             // Clear compiled directory to avoid stale flat files
             if compiled_dir.exists() {
                 std::fs::remove_dir_all(compiled_dir)?;
@@ -615,7 +620,7 @@ impl SkinBuilder {
         compiled_dir: &Path,
     ) -> Result<Vec<PathBuf>> {
         // If incremental build is disabled or no cache, compile the whole directory
-        if self.cache.is_none() {
+        if !self.has_cache() {
             // Clear compiled directory to avoid stale flat files
             if compiled_dir.exists() {
                 std::fs::remove_dir_all(compiled_dir)?;
@@ -1192,7 +1197,6 @@ mod tests {
 
     #[test]
     fn test_has_adaptive_icon_empty_dirs() {
-        let temp_dir = TempDir::new().unwrap();
         let result = super::has_adaptive_icon_resources(&[]);
         assert!(!result, "Empty dirs should return false");
     }

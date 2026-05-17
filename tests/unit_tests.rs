@@ -79,7 +79,7 @@ fn test_skin_builder_new_no_incremental() {
     let config = test_config(&tmp, "com.test.noinc", None, None, None);
     let builder = SkinBuilder::new(config).unwrap();
     assert!(
-        builder.cache.is_none(),
+        !builder.has_cache(),
         "Cache should be None when incremental is None"
     );
 }
@@ -90,7 +90,7 @@ fn test_skin_builder_new_incremental_true() {
     let config = test_config(&tmp, "com.test.inc", Some(true), None, None);
     let builder = SkinBuilder::new(config).unwrap();
     assert!(
-        builder.cache.is_some(),
+        builder.has_cache(),
         "Cache should be Some when incremental is true"
     );
 }
@@ -101,7 +101,7 @@ fn test_skin_builder_new_incremental_false() {
     let config = test_config(&tmp, "com.test.falseinc", Some(false), None, None);
     let builder = SkinBuilder::new(config).unwrap();
     assert!(
-        builder.cache.is_none(),
+        !builder.has_cache(),
         "Cache should be None when incremental is false"
     );
 }
@@ -118,7 +118,7 @@ fn test_skin_builder_new_with_cache_dir() {
         None,
     );
     let builder = SkinBuilder::new(config).unwrap();
-    assert!(builder.cache.is_some(), "Cache should be created");
+    assert!(builder.has_cache(), "Cache should be created");
     assert!(
         cache_dir.join("com.test.cached").exists(),
         "Cache directory should be under the specified cache_dir"
@@ -137,7 +137,7 @@ fn test_skin_builder_new_with_build_dir() {
         Some(build_dir.clone()),
     );
     let builder = SkinBuilder::new(config).unwrap();
-    assert!(builder.cache.is_some(), "Cache should be created");
+    assert!(builder.has_cache(), "Cache should be created");
     assert!(
         build_dir.join("com.test.bd").exists(),
         "Cache directory should be under build_dir"
@@ -159,7 +159,7 @@ fn test_skin_builder_new_cache_dir_takes_priority() {
         Some(build_dir.clone()),
     );
     let builder = SkinBuilder::new(config).unwrap();
-    assert!(builder.cache.is_some(), "Cache should be created");
+    assert!(builder.has_cache(), "Cache should be created");
     assert!(
         cache_dir.join("com.test.priority").exists(),
         "Cache should be under cache_dir (takes priority over build_dir)"
@@ -171,7 +171,7 @@ fn test_skin_builder_new_default_cache_location() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp, "com.test.default", Some(true), None, None);
     let builder = SkinBuilder::new(config).unwrap();
-    assert!(builder.cache.is_some(), "Cache should be created");
+    assert!(builder.has_cache(), "Cache should be created");
 
     // Default location: output_dir/.build/<package_name>
     let default_cache = tmp
@@ -629,5 +629,5 @@ fn test_skin_builder_new_missing_resource_dir() {
 
     // Should still succeed to create builder even without existing res dir
     let builder = SkinBuilder::new(config).unwrap();
-    assert!(builder.cache.is_none());
+    assert!(!builder.has_cache());
 }

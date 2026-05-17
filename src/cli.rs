@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 
 use crate::aapt2::Aapt2;
@@ -19,7 +19,7 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub quiet: bool,
 
-    /// Write logs to a file in addition to stdout
+    /// Write logs to a file in addition to console output
     #[arg(short = 'L', long, global = true)]
     pub log_file: Option<PathBuf>,
 
@@ -380,7 +380,9 @@ impl Cli {
             // Single configuration mode - keep backward compatibility
             let config = build_configs.into_iter().next().unwrap();
             let package_name = config.package_name.clone();
-            println!("{}", "\nBuilding skin package...\n".blue().bold());
+            if !json {
+                println!("{}", "\nBuilding skin package...\n".blue().bold());
+            }
             let start_time = std::time::Instant::now();
             let mut builder = SkinBuilder::new(config)?;
             let result = builder.build().await?;
@@ -417,7 +419,7 @@ impl Cli {
                 }
 
                 // Save failure log
-                match Self::save_failure_log(&package_name, &result.errors) {
+                match Self::save_failure_log(&package_name, &result.errors, None) {
                     Ok(log_path) => {
                         println!("\n  {}: {}", "Log saved to".yellow(), log_path.display());
                     }
@@ -433,12 +435,14 @@ impl Cli {
             // Keep a copy of original configs for displaying package names later
             let original_configs = build_configs.clone();
 
-            println!(
-                "{}",
-                format!("\nBuilding {} skin packages...\n", build_configs.len())
-                    .blue()
-                    .bold()
-            );
+            if !json {
+                println!(
+                    "{}",
+                    format!("\nBuilding {} skin packages...\n", build_configs.len())
+                        .blue()
+                        .bold()
+                );
+            }
 
             let start_time = std::time::Instant::now();
 
@@ -756,18 +760,12 @@ impl Cli {
                         println!("      - {}", error);
                     }
                     // Save failure log
-                    if let Some(_config) = original_configs.get(*idx) {
-                        match Self::save_failure_log(package_name, &result.errors) {
-                            Ok(log_path) => {
-                                println!(
-                                    "      {}: {}",
-                                    "Log saved to".yellow(),
-                                    log_path.display()
-                                );
-                            }
-                            Err(e) => {
-                                warn!("Failed to save error log for {}: {}", package_name, e);
-                            }
+                    match Self::save_failure_log(package_name, &result.errors, None) {
+                        Ok(log_path) => {
+                            println!("      {}: {}", "Log saved to".yellow(), log_path.display());
+                        }
+                        Err(e) => {
+                            warn!("Failed to save error log for {}: {}", package_name, e);
                         }
                     }
                 }
@@ -786,11 +784,17 @@ impl Cli {
         builder.build().await
     }
 
-    fn save_failure_log(package_name: &str, errors: &[String]) -> Result<PathBuf> {
+    fn save_failure_log(
+        package_name: &str,
+        errors: &[String],
+        logs_dir_override: Option<&Path>,
+    ) -> Result<PathBuf> {
         use std::io::Write;
 
-        // Create logs directory in current working directory
-        let logs_dir = PathBuf::from("./logs");
+        // Create logs directory in current working directory by default
+        let logs_dir = logs_dir_override
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("./logs"));
         std::fs::create_dir_all(&logs_dir)?;
 
         // Generate log file name with timestamp
@@ -991,15 +995,11 @@ mod tests {
     #[test]
     fn test_save_failure_log_creates_file() {
         let dir = tempfile::tempdir().unwrap();
-        // Change to temp dir so ./logs is created there
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
         let result = Cli::save_failure_log(
             "com.example.test",
             &["Error 1".to_string(), "Error 2".to_string()],
+            Some(&dir.path().join("logs")),
         );
-        std::env::set_current_dir(&original_dir).unwrap();
 
         assert!(result.is_ok());
         let log_path = result.unwrap();
@@ -1020,11 +1020,7 @@ mod tests {
     #[test]
     fn test_save_failure_log_empty_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let result = Cli::save_failure_log("com.empty", &[]);
-        std::env::set_current_dir(&original_dir).unwrap();
+        let result = Cli::save_failure_log("com.empty", &[], Some(&dir.path().join("logs")));
 
         assert!(result.is_ok());
         let log_path = result.unwrap();
@@ -1037,33 +1033,25 @@ mod tests {
     #[test]
     fn test_save_failure_log_creates_logs_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        // Ensure ./logs does not exist yet
-        let logs_dir = PathBuf::from("./logs");
+        let logs_dir = dir.path().join("logs");
         assert!(!logs_dir.exists());
 
-        let result = Cli::save_failure_log("com.test", &["err".to_string()]);
-        std::env::set_current_dir(&original_dir).unwrap();
+        let result = Cli::save_failure_log("com.test", &["err".to_string()], Some(&logs_dir));
 
         assert!(result.is_ok());
-        // logs dir should have been created in the temp dir
-        let logs_in_temp = dir.path().join("logs");
-        assert!(logs_in_temp.exists());
+        assert!(logs_dir.exists());
     }
 
     #[test]
     fn test_save_failure_log_unique_filenames() {
         let dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let result1 = Cli::save_failure_log("com.example", &["err".to_string()]).unwrap();
+        let logs_dir = dir.path().join("logs");
+        let result1 =
+            Cli::save_failure_log("com.example", &["err".to_string()], Some(&logs_dir)).unwrap();
         // Small sleep to ensure timestamp changes
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        let result2 = Cli::save_failure_log("com.example", &["err".to_string()]).unwrap();
-        std::env::set_current_dir(&original_dir).unwrap();
+        let result2 =
+            Cli::save_failure_log("com.example", &["err".to_string()], Some(&logs_dir)).unwrap();
 
         // They should be different files (different timestamps)
         assert_ne!(result1, result2);
