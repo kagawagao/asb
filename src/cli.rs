@@ -928,3 +928,673 @@ impl Cli {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== save_failure_log tests ====================
+
+    #[test]
+    fn test_save_failure_log_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // Change to temp dir so ./logs is created there
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = Cli::save_failure_log("com.example.test", &["Error 1".to_string(), "Error 2".to_string()]);
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        let log_path = result.unwrap();
+        assert!(log_path.exists());
+        assert!(log_path.to_string_lossy().contains("build_failure_com.example.test_"));
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(content.contains("Build Failure Log"));
+        assert!(content.contains("Package: com.example.test"));
+        assert!(content.contains("Error 1"));
+        assert!(content.contains("Error 2"));
+    }
+
+    #[test]
+    fn test_save_failure_log_empty_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = Cli::save_failure_log("com.empty", &[]);
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        let log_path = result.unwrap();
+        assert!(log_path.exists());
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(content.contains("Package: com.empty"));
+        assert!(content.contains("Errors:"));
+    }
+
+    #[test]
+    fn test_save_failure_log_creates_logs_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        // Ensure ./logs does not exist yet
+        let logs_dir = PathBuf::from("./logs");
+        assert!(!logs_dir.exists());
+
+        let result = Cli::save_failure_log("com.test", &["err".to_string()]);
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        // logs dir should have been created in the temp dir
+        let logs_in_temp = dir.path().join("logs");
+        assert!(logs_in_temp.exists());
+    }
+
+    #[test]
+    fn test_save_failure_log_unique_filenames() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result1 = Cli::save_failure_log("com.example", &["err".to_string()]).unwrap();
+        // Small sleep to ensure timestamp changes
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let result2 = Cli::save_failure_log("com.example", &["err".to_string()]).unwrap();
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        // They should be different files (different timestamps)
+        assert_ne!(result1, result2);
+    }
+
+    // ==================== BuildConfig::load_configs via temp files ====================
+
+    fn write_temp_config(dir: &tempfile::TempDir, filename: &str, content: &str) -> PathBuf {
+        let path = dir.path().join(filename);
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_load_configs_single_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"{
+                "resourceDir": "./myres",
+                "manifestPath": "./mymanifest.xml",
+                "outputDir": "./myoutput",
+                "packageName": "com.single.app",
+                "androidJar": "/sdk/android.jar"
+            }"#,
+        );
+
+        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        assert_eq!(loaded.configs.len(), 1);
+        assert_eq!(loaded.configs[0].package_name, "com.single.app");
+        assert_eq!(loaded.configs[0].resource_dir, PathBuf::from("./myres"));
+        assert_eq!(
+            loaded.configs[0].manifest_path,
+            PathBuf::from("./mymanifest.xml")
+        );
+        assert_eq!(loaded.configs[0].output_dir, PathBuf::from("./myoutput"));
+        assert_eq!(
+            loaded.configs[0].android_jar,
+            Some(PathBuf::from("/sdk/android.jar"))
+        );
+        assert!(loaded.max_parallel_builds.is_none());
+    }
+
+    #[test]
+    fn test_load_configs_array_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"[
+                {
+                    "resourceDir": "./app1/res",
+                    "manifestPath": "./app1/AndroidManifest.xml",
+                    "outputDir": "./build",
+                    "packageName": "com.example.app1",
+                    "androidJar": "/sdk/android.jar"
+                },
+                {
+                    "resourceDir": "./app2/res",
+                    "manifestPath": "./app2/AndroidManifest.xml",
+                    "outputDir": "./build",
+                    "packageName": "com.example.app2",
+                    "androidJar": "/sdk/android.jar"
+                }
+            ]"#,
+        );
+
+        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        assert_eq!(loaded.configs.len(), 2);
+        assert_eq!(loaded.configs[0].package_name, "com.example.app1");
+        assert_eq!(loaded.configs[1].package_name, "com.example.app2");
+        assert!(loaded.max_parallel_builds.is_none());
+    }
+
+    #[test]
+    fn test_load_configs_array_single_element() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"[
+                {
+                    "resourceDir": "./app/res",
+                    "manifestPath": "./app/AndroidManifest.xml",
+                    "outputDir": "./build",
+                    "packageName": "com.solo",
+                    "androidJar": "/sdk/android.jar"
+                }
+            ]"#,
+        );
+
+        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        assert_eq!(loaded.configs.len(), 1);
+        assert_eq!(loaded.configs[0].package_name, "com.solo");
+    }
+
+    #[test]
+    fn test_load_configs_multi_app_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"{
+                "outputDir": "./build",
+                "androidJar": "/sdk/android.jar",
+                "maxParallelBuilds": 4,
+                "apps": [
+                    {
+                        "baseDir": "./app1/src/main",
+                        "packageName": "com.example.app1"
+                    },
+                    {
+                        "baseDir": "./app2/src/main",
+                        "packageName": "com.example.app2"
+                    }
+                ]
+            }"#,
+        );
+
+        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        assert_eq!(loaded.configs.len(), 2);
+        assert_eq!(loaded.configs[0].package_name, "com.example.app1");
+        assert_eq!(loaded.configs[1].package_name, "com.example.app2");
+        assert_eq!(loaded.max_parallel_builds, Some(4));
+        // Common output_dir should be applied
+        assert_eq!(loaded.configs[0].output_dir, PathBuf::from("./build"));
+        assert_eq!(loaded.configs[1].output_dir, PathBuf::from("./build"));
+    }
+
+    #[test]
+    fn test_load_configs_multi_app_with_common_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"{
+                "outputDir": "./build",
+                "androidJar": "/sdk/android.jar",
+                "versionCode": 10,
+                "versionName": "2.0.0",
+                "packageId": "0x80",
+                "apps": [
+                    {
+                        "baseDir": "./skin1/src/main",
+                        "packageName": "com.skin.one"
+                    }
+                ]
+            }"#,
+        );
+
+        let loaded = BuildConfig::load_configs(Some(config_path)).unwrap();
+        assert_eq!(loaded.configs.len(), 1);
+        let config = &loaded.configs[0];
+        assert_eq!(config.package_name, "com.skin.one");
+        assert_eq!(config.version_code, Some(10));
+        assert_eq!(config.version_name, Some("2.0.0".to_string()));
+        assert_eq!(config.package_id, Some("0x80".to_string()));
+        assert_eq!(config.output_dir, PathBuf::from("./build"));
+    }
+
+    #[test]
+    fn test_load_configs_default_no_config_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        // No config file passed, and no asb.config.json in temp dir
+        let loaded = BuildConfig::load_configs(None).unwrap();
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert_eq!(loaded.configs.len(), 1);
+        let default = &loaded.configs[0];
+        assert_eq!(default.package_name, "com.example.skin");
+        assert_eq!(default.resource_dir, PathBuf::from("./src/main/res"));
+        assert_eq!(
+            default.manifest_path,
+            PathBuf::from("./src/main/AndroidManifest.xml")
+        );
+        assert_eq!(default.output_dir, PathBuf::from("./build/outputs/skin"));
+        assert!(default.incremental.unwrap());
+        assert_eq!(default.version_code, Some(1));
+        assert!(loaded.max_parallel_builds.is_none());
+    }
+
+    #[test]
+    fn test_load_configs_default_returns_defaults() {
+        // Test the default_config() directly
+        let default = BuildConfig::default_config();
+        assert_eq!(default.package_name, "com.example.skin");
+        assert_eq!(default.resource_dir, PathBuf::from("./src/main/res"));
+        assert_eq!(default.output_dir, PathBuf::from("./build/outputs/skin"));
+        assert_eq!(default.version_name, Some("1.0.0".to_string()));
+        assert_eq!(default.version_code, Some(1));
+        assert!(default.incremental.unwrap());
+    }
+
+    #[test]
+    fn test_load_configs_nonexistent_file() {
+        let result = BuildConfig::load_configs(Some(PathBuf::from("/nonexistent/path/config.json")));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_configs_missing_required_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"{
+                "packageName": "com.incomplete"
+            }"#,
+        );
+
+        // Missing resourceDir, manifestPath, outputDir -> should fail deserialization
+        let result = BuildConfig::load_configs(Some(config_path));
+        assert!(result.is_err());
+    }
+
+    // ==================== Package filtering logic tests ====================
+
+    #[test]
+    fn test_package_filtering_no_match() {
+        // Simulate the filtering logic from run_build
+        let mut configs = vec![
+            BuildConfig {
+                resource_dir: PathBuf::from("./res1"),
+                manifest_path: PathBuf::from("./man1.xml"),
+                output_dir: PathBuf::from("./out"),
+                output_file: None,
+                package_name: "com.example.app1".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+            BuildConfig {
+                resource_dir: PathBuf::from("./res2"),
+                manifest_path: PathBuf::from("./man2.xml"),
+                output_dir: PathBuf::from("./out"),
+                output_file: None,
+                package_name: "com.example.app2".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+        ];
+        let all_package_names: Vec<String> = configs.iter().map(|c| c.package_name.clone()).collect();
+        let packages: Vec<String> = vec!["com.nonexistent".to_string()];
+
+        let original_count = configs.len();
+        configs.retain(|config| packages.contains(&config.package_name));
+
+        assert_eq!(configs.len(), 0);
+        assert_eq!(original_count, 2);
+        assert_eq!(all_package_names.len(), 2);
+    }
+
+    #[test]
+    fn test_package_filtering_partial_match() {
+        let mut configs = vec![
+            BuildConfig {
+                resource_dir: PathBuf::from("./res1"),
+                manifest_path: PathBuf::from("./man1.xml"),
+                output_dir: PathBuf::from("./out"),
+                output_file: None,
+                package_name: "com.example.app1".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+            BuildConfig {
+                resource_dir: PathBuf::from("./res2"),
+                manifest_path: PathBuf::from("./man2.xml"),
+                output_dir: PathBuf::from("./out"),
+                output_file: None,
+                package_name: "com.example.app2".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+        ];
+        let packages: Vec<String> = vec!["com.example.app1".to_string()];
+
+        configs.retain(|config| packages.contains(&config.package_name));
+
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].package_name, "com.example.app1");
+    }
+
+    #[test]
+    fn test_package_filtering_all_match() {
+        let mut configs = vec![
+            BuildConfig {
+                resource_dir: PathBuf::from("./res1"),
+                manifest_path: PathBuf::from("./man1.xml"),
+                output_dir: PathBuf::from("./out"),
+                output_file: None,
+                package_name: "com.a".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+            BuildConfig {
+                resource_dir: PathBuf::from("./res2"),
+                manifest_path: PathBuf::from("./man2.xml"),
+                output_dir: PathBuf::from("./out"),
+                output_file: None,
+                package_name: "com.b".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+        ];
+        let packages: Vec<String> = vec!["com.a".to_string(), "com.b".to_string()];
+
+        configs.retain(|config| packages.contains(&config.package_name));
+
+        assert_eq!(configs.len(), 2);
+    }
+
+    #[test]
+    fn test_package_filtering_empty_packages_list() {
+        let configs = vec![BuildConfig::default_config()];
+        let packages: Vec<String> = vec![];
+        let mut filtered = configs.clone();
+
+        // Empty packages list means no filtering applied
+        if !packages.is_empty() {
+            filtered.retain(|config| packages.contains(&config.package_name));
+        }
+
+        assert_eq!(filtered.len(), 1);
+    }
+
+    // ==================== CLI arg override logic tests ====================
+
+    #[test]
+    fn test_cli_override_single_config() {
+        let mut config = BuildConfig::default_config();
+
+        // Simulate CLI overrides
+        let resource_dir = Some(PathBuf::from("./custom_res"));
+        let package = Some("com.custom.pkg".to_string());
+        let version_code = Some(42u32);
+        let aar: Vec<PathBuf> = vec![PathBuf::from("./lib.aar")];
+
+        // Apply overrides
+        if let Some(ref rd) = resource_dir {
+            config.resource_dir = rd.clone();
+        }
+        if let Some(ref p) = package {
+            config.package_name = p.clone();
+        }
+        if let Some(vc) = version_code {
+            config.version_code = Some(vc);
+        }
+        if !aar.is_empty() {
+            config.aar_files = Some(aar.clone());
+        }
+
+        assert_eq!(config.resource_dir, PathBuf::from("./custom_res"));
+        assert_eq!(config.package_name, "com.custom.pkg");
+        assert_eq!(config.version_code, Some(42));
+        assert_eq!(config.aar_files, Some(vec![PathBuf::from("./lib.aar")]));
+    }
+
+    #[test]
+    fn test_cli_override_preserves_non_overridden_fields() {
+        let mut config = BuildConfig::default_config();
+        let original_output_dir = config.output_dir.clone();
+        let original_manifest = config.manifest_path.clone();
+
+        // Only override package_name
+        let package = Some("com.new.pkg".to_string());
+        if let Some(ref p) = package {
+            config.package_name = p.clone();
+        }
+
+        assert_eq!(config.package_name, "com.new.pkg");
+        // Non-overridden fields should remain
+        assert_eq!(config.output_dir, original_output_dir);
+        assert_eq!(config.manifest_path, original_manifest);
+    }
+
+    #[test]
+    fn test_cli_override_multi_config() {
+        let mut configs = vec![
+            BuildConfig::default_config(),
+            BuildConfig {
+                resource_dir: PathBuf::from("./res2"),
+                manifest_path: PathBuf::from("./man2.xml"),
+                output_dir: PathBuf::from("./out2"),
+                output_file: None,
+                package_name: "com.example.two".to_string(),
+                aapt2_path: None,
+                android_jar: None,
+                aar_files: None,
+                incremental: None,
+                build_dir: None,
+                cache_dir: None,
+                version_code: None,
+                version_name: None,
+                additional_resource_dirs: None,
+                compiled_dir: None,
+                stable_ids_file: None,
+                package_id: None,
+                precompiled_dependencies: None,
+            },
+        ];
+
+        let output = Some(PathBuf::from("./unified_out"));
+        let package_id = Some("0x7f".to_string());
+
+        // Override ALL configs with CLI args (behavior from run_build)
+        for config in &mut configs {
+            if let Some(ref o) = output {
+                config.output_dir = o.clone();
+            }
+            if let Some(ref pid) = package_id {
+                config.package_id = Some(pid.clone());
+            }
+        }
+
+        assert_eq!(configs[0].output_dir, PathBuf::from("./unified_out"));
+        assert_eq!(configs[1].output_dir, PathBuf::from("./unified_out"));
+        assert_eq!(configs[0].package_id, Some("0x7f".to_string()));
+        assert_eq!(configs[1].package_id, Some("0x7f".to_string()));
+        // package names should still differ
+        assert_eq!(configs[0].package_name, "com.example.skin");
+        assert_eq!(configs[1].package_name, "com.example.two");
+    }
+
+    #[test]
+    fn test_cli_has_args_detection() {
+        // Simulate has_cli_args detection
+        let resource_dir: Option<PathBuf> = None;
+        let manifest: Option<PathBuf> = None;
+        let package: Option<String> = Some("test".to_string()); // This one is set
+        let aar: Vec<PathBuf> = vec![];
+        let incremental = false;
+        let version_code: Option<u32> = None;
+
+        let has_cli_args = resource_dir.is_some()
+            || manifest.is_some()
+            || package.is_some()
+            || !aar.is_empty()
+            || incremental
+            || version_code.is_some();
+
+        assert!(has_cli_args);
+    }
+
+    #[test]
+    fn test_cli_no_args_detection() {
+        let resource_dir: Option<PathBuf> = None;
+        let package: Option<String> = None;
+        let aar: Vec<PathBuf> = vec![];
+        let incremental = false;
+
+        let has_cli_args = resource_dir.is_some()
+            || package.is_some()
+            || !aar.is_empty()
+            || incremental;
+
+        assert!(!has_cli_args);
+    }
+
+    // ==================== BuildConfig load_or_default tests ====================
+
+    #[test]
+    fn test_load_or_default_explicit_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            "custom.json",
+            r#"{
+                "resourceDir": "./custom_res",
+                "manifestPath": "./custom_manifest.xml",
+                "outputDir": "./custom_out",
+                "packageName": "com.custom.load"
+            }"#,
+        );
+
+        let config = BuildConfig::load_or_default(Some(config_path)).unwrap();
+        assert_eq!(config.package_name, "com.custom.load");
+        assert_eq!(config.resource_dir, PathBuf::from("./custom_res"));
+    }
+
+    #[test]
+    fn test_load_or_default_auto_detect() {
+        let dir = tempfile::tempdir().unwrap();
+        // Write asb.config.json to temp dir
+        let _config_path = write_temp_config(
+            &dir,
+            "asb.config.json",
+            r#"{
+                "resourceDir": "./auto_res",
+                "manifestPath": "./auto_manifest.xml",
+                "outputDir": "./auto_out",
+                "packageName": "com.auto.detect"
+            }"#,
+        );
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        // load_or_default with None should detect asb.config.json
+        let config = BuildConfig::load_or_default(None).unwrap();
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert_eq!(config.package_name, "com.auto.detect");
+        assert_eq!(config.resource_dir, PathBuf::from("./auto_res"));
+    }
+
+    #[test]
+    fn test_load_or_default_fallback_to_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        // No asb.config.json in temp dir, and no explicit file -> defaults
+        let config = BuildConfig::load_or_default(None).unwrap();
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert_eq!(config.package_name, "com.example.skin");
+        assert_eq!(config.resource_dir, PathBuf::from("./src/main/res"));
+    }
+
+    #[test]
+    fn test_load_or_default_nonexistent_file() {
+        let result = BuildConfig::load_or_default(Some(PathBuf::from("/no/such/file.json")));
+        assert!(result.is_err());
+    }
+}

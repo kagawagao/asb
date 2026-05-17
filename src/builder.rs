@@ -102,9 +102,9 @@ fn create_minimal_manifest(package_name: &str, compiled_dir: &Path) -> Result<Pa
 
 /// Main builder for Android skin packages
 pub struct SkinBuilder {
-    config: BuildConfig,
+    pub config: BuildConfig,
     aapt2: Aapt2,
-    cache: Option<BuildCache>,
+    pub cache: Option<BuildCache>,
 }
 
 impl SkinBuilder {
@@ -1055,5 +1055,359 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    // ========== Tests for normalize_resource_path ==========
+
+    #[test]
+    fn test_normalize_resource_path_basic() {
+        // Basic version qualifier removal
+        assert_eq!(
+            super::normalize_resource_path("res/drawable-v21/icon.xml"),
+            "res/drawable/icon.xml"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_complex_qualifier() {
+        // Complex qualifier: mipmap-xxhdpi-v4 -> mipmap-xxhdpi
+        assert_eq!(
+            super::normalize_resource_path("res/mipmap-xxhdpi-v4/icon.png"),
+            "res/mipmap-xxhdpi/icon.png"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_no_version() {
+        // No version qualifier
+        assert_eq!(
+            super::normalize_resource_path("res/drawable/icon.xml"),
+            "res/drawable/icon.xml"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_non_res() {
+        // Non-res path should be returned as-is
+        assert_eq!(
+            super::normalize_resource_path("something/else/file.txt"),
+            "something/else/file.txt"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_short() {
+        // Path too short (only 2 parts)
+        assert_eq!(
+            super::normalize_resource_path("res/icon.png"),
+            "res/icon.png"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_values_no_version() {
+        // Values directory without version
+        assert_eq!(
+            super::normalize_resource_path("res/values/strings.xml"),
+            "res/values/strings.xml"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_nested_file() {
+        // Nested file path with version qualifier
+        assert_eq!(
+            super::normalize_resource_path("res/drawable-v21/subdir/icon.xml"),
+            "res/drawable/subdir/icon.xml"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_anydpi_version() {
+        // mipmap-anydpi-v26 -> mipmap-anydpi
+        assert_eq!(
+            super::normalize_resource_path("res/mipmap-anydpi-v26/icon.xml"),
+            "res/mipmap-anydpi/icon.xml"
+        );
+    }
+
+    #[test]
+    fn test_normalize_resource_path_dash_v_in_middle() {
+        // -v that's not followed by digits (e.g., in a directory name like "res/my-vendor/...")
+        // This path has "my-vendor" but the function checks rfind("-v")
+        // "my-vendor" contains "-v" but it's not at the start of the resource type
+        // The function does rfind("-v") on the resource type
+        // Let's use a path where the resource type has "-v" not followed by digits
+        // Actually the function checks rfind("-v") and then checks if after it is all digits
+        // So "my-vendor" would have rfind("-v") at position 3, after_v="endor" which is not all digits
+        // So it would return "my-vendor" unchanged
+        assert_eq!(
+            super::normalize_resource_path("res/my-vendor/file.xml"),
+            "res/my-vendor/file.xml"
+        );
+    }
+
+    // ========== Tests for has_adaptive_icon_resources ==========
+
+    #[test]
+    fn test_has_adaptive_icon_empty_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = super::has_adaptive_icon_resources(&[]);
+        assert!(!result, "Empty dirs should return false");
+    }
+
+    #[test]
+    fn test_has_adaptive_icon_no_mipmap_anydpi() {
+        let temp_dir = TempDir::new().unwrap();
+        let res_dir = temp_dir.path().join("res");
+        let drawable_dir = res_dir.join("drawable");
+        fs::create_dir_all(&drawable_dir).unwrap();
+        fs::write(drawable_dir.join("icon.png"), "fake png").unwrap();
+
+        let result = super::has_adaptive_icon_resources(&[res_dir]);
+        assert!(!result, "No mipmap-anydpi dir should return false");
+    }
+
+    #[test]
+    fn test_has_adaptive_icon_without_adaptive_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let res_dir = temp_dir.path().join("res");
+        let anydpi_dir = res_dir.join("mipmap-anydpi-v26");
+        fs::create_dir_all(&anydpi_dir).unwrap();
+        fs::write(
+            anydpi_dir.join("ic_launcher.xml"),
+            "<adaptive-icon-no/>",
+        )
+        .unwrap();
+
+        let result = super::has_adaptive_icon_resources(&[res_dir]);
+        assert!(
+            !result,
+            "mipmap-anydpi without <adaptive-icon should return false"
+        );
+    }
+
+    #[test]
+    fn test_has_adaptive_icon_with_adaptive_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let res_dir = temp_dir.path().join("res");
+        let anydpi_dir = res_dir.join("mipmap-anydpi-v26");
+        fs::create_dir_all(&anydpi_dir).unwrap();
+        fs::write(
+            anydpi_dir.join("ic_launcher.xml"),
+            "<adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">",
+        )
+        .unwrap();
+
+        let result = super::has_adaptive_icon_resources(&[res_dir]);
+        assert!(result, "mipmap-anydpi with <adaptive-icon should return true");
+    }
+
+    #[test]
+    fn test_has_adaptive_icon_anydpi_no_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let res_dir = temp_dir.path().join("res");
+        let anydpi_dir = res_dir.join("mipmap-anydpi");
+        fs::create_dir_all(&anydpi_dir).unwrap();
+        fs::write(
+            anydpi_dir.join("ic_launcher.xml"),
+            "<adaptive-icon></adaptive-icon>",
+        )
+        .unwrap();
+
+        let result = super::has_adaptive_icon_resources(&[res_dir]);
+        assert!(result, "mipmap-anydpi (no version) with <adaptive-icon should return true");
+    }
+
+    // ========== Tests for SkinBuilder::new with various configs ==========
+
+    #[test]
+    fn test_skin_builder_new_no_incremental() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        fs::create_dir_all(res_dir.join("values"))?;
+
+        let config = BuildConfig {
+            resource_dir: res_dir,
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test.noinc".to_string(),
+            aapt2_path: None,
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
+            aar_files: None,
+            incremental: None, // No incremental
+            build_dir: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let builder = SkinBuilder::new(config)?;
+        assert!(builder.cache.is_none(), "Cache should be None when incremental is not set");
+        Ok(())
+    }
+
+    #[test]
+    fn test_skin_builder_new_incremental_true() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        fs::create_dir_all(res_dir.join("values"))?;
+
+        let config = BuildConfig {
+            resource_dir: res_dir,
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test.inc".to_string(),
+            aapt2_path: None,
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
+            aar_files: None,
+            incremental: Some(true),
+            build_dir: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let builder = SkinBuilder::new(config)?;
+        assert!(builder.cache.is_some(), "Cache should be Some when incremental is true");
+        Ok(())
+    }
+
+    #[test]
+    fn test_skin_builder_new_incremental_false() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        fs::create_dir_all(res_dir.join("values"))?;
+
+        let config = BuildConfig {
+            resource_dir: res_dir,
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test.noinc2".to_string(),
+            aapt2_path: None,
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
+            aar_files: None,
+            incremental: Some(false),
+            build_dir: None,
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let builder = SkinBuilder::new(config)?;
+        assert!(builder.cache.is_none(), "Cache should be None when incremental is false");
+        Ok(())
+    }
+
+    #[test]
+    fn test_skin_builder_new_with_cache_dir() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        let cache_dir = temp_dir.path().join("my_cache");
+        fs::create_dir_all(res_dir.join("values"))?;
+
+        let config = BuildConfig {
+            resource_dir: res_dir,
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test.cachedir".to_string(),
+            aapt2_path: None,
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
+            aar_files: None,
+            incremental: Some(true),
+            build_dir: None,
+            cache_dir: Some(cache_dir.clone()),
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let builder = SkinBuilder::new(config)?;
+        assert!(builder.cache.is_some(), "Cache should be created");
+        assert!(
+            cache_dir.join("com.test.cachedir").exists(),
+            "Cache directory should be created under the specified cache_dir"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_skin_builder_new_with_build_dir() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let res_dir = temp_dir.path().join("res");
+        let build_dir = temp_dir.path().join("my_build");
+        fs::create_dir_all(res_dir.join("values"))?;
+
+        let config = BuildConfig {
+            resource_dir: res_dir,
+            manifest_path: temp_dir.path().join("AndroidManifest.xml"),
+            output_dir: temp_dir.path().join("output"),
+            output_file: None,
+            package_name: "com.test.builddir".to_string(),
+            aapt2_path: None,
+            android_jar: Some(PathBuf::from("/fake/android.jar")),
+            aar_files: None,
+            incremental: Some(true),
+            build_dir: Some(build_dir.clone()),
+            cache_dir: None,
+            version_code: None,
+            version_name: None,
+            additional_resource_dirs: None,
+            compiled_dir: None,
+            stable_ids_file: None,
+            package_id: None,
+            precompiled_dependencies: None,
+        };
+
+        let builder = SkinBuilder::new(config)?;
+        assert!(builder.cache.is_some(), "Cache should be created");
+        assert!(
+            build_dir.join("com.test.builddir").exists(),
+            "Cache directory should be created under the build_dir"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_has_adaptive_icon_multiple_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let res_dir1 = temp_dir.path().join("res1");
+        let res_dir2 = temp_dir.path().join("res2");
+
+        // res1 has no adaptive icons
+        let drawable = res_dir1.join("drawable");
+        fs::create_dir_all(&drawable).unwrap();
+        fs::write(drawable.join("icon.png"), "fake").unwrap();
+
+        // res2 has adaptive icons
+        let anydpi = res_dir2.join("mipmap-anydpi-v26");
+        fs::create_dir_all(&anydpi).unwrap();
+        fs::write(anydpi.join("ic_launcher.xml"), "<adaptive-icon></adaptive-icon>").unwrap();
+
+        let result = super::has_adaptive_icon_resources(&[res_dir1.clone(), res_dir2.clone()]);
+        assert!(result, "Should detect adaptive icon in second dir");
     }
 }
