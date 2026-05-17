@@ -31,37 +31,39 @@ impl Aapt2 {
         if let Ok(output) = Command::new(if cfg!(windows) { "where" } else { "which" })
             .arg("aapt2")
             .output()
-            && output.status.success() {
-                let path_str = String::from_utf8_lossy(&output.stdout);
-                if let Some(line) = path_str.lines().next() {
-                    let path = PathBuf::from(line.trim());
-                    if path.exists() {
-                        info!("Found aapt2 at: {}", path.display());
-                        return Ok(path);
-                    }
+            && output.status.success()
+        {
+            let path_str = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = path_str.lines().next() {
+                let path = PathBuf::from(line.trim());
+                if path.exists() {
+                    info!("Found aapt2 at: {}", path.display());
+                    return Ok(path);
                 }
             }
+        }
 
         // Try ANDROID_HOME
         if let Ok(android_home) = std::env::var("ANDROID_HOME") {
             let build_tools_dir = PathBuf::from(android_home).join("build-tools");
             if build_tools_dir.exists()
-                && let Ok(entries) = std::fs::read_dir(&build_tools_dir) {
-                    let mut versions: Vec<_> = entries
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.path().is_dir())
-                        .collect();
-                    versions.sort_by(|a, b| b.path().cmp(&a.path()));
+                && let Ok(entries) = std::fs::read_dir(&build_tools_dir)
+            {
+                let mut versions: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().is_dir())
+                    .collect();
+                versions.sort_by(|a, b| b.path().cmp(&a.path()));
 
-                    for entry in versions {
-                        let aapt2_name = if cfg!(windows) { "aapt2.exe" } else { "aapt2" };
-                        let aapt2_path = entry.path().join(aapt2_name);
-                        if aapt2_path.exists() {
-                            info!("Found aapt2 at: {}", aapt2_path.display());
-                            return Ok(aapt2_path);
-                        }
+                for entry in versions {
+                    let aapt2_name = if cfg!(windows) { "aapt2.exe" } else { "aapt2" };
+                    let aapt2_path = entry.path().join(aapt2_name);
+                    if aapt2_path.exists() {
+                        info!("Found aapt2 at: {}", aapt2_path.display());
+                        return Ok(aapt2_path);
                     }
                 }
+            }
         }
 
         anyhow::bail!(
@@ -207,27 +209,28 @@ impl Aapt2 {
                 //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
                 if let Some(parent) = file.parent()
                     && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str())
-                        && let Some(file_name) = file.file_name().and_then(|n| n.to_str()) {
-                            // Try different naming patterns based on resource type
-                            let possible_names = if parent_name.starts_with("values") {
-                                // For values resources: values_strings.arsc.flat
-                                vec![format!(
-                                    "{}_{}.arsc.flat",
-                                    parent_name,
-                                    file.file_stem().and_then(|s| s.to_str()).unwrap_or("")
-                                )]
-                            } else {
-                                // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
-                                vec![format!("{}_{}.flat", parent_name, file_name)]
-                            };
+                    && let Some(file_name) = file.file_name().and_then(|n| n.to_str())
+                {
+                    // Try different naming patterns based on resource type
+                    let possible_names = if parent_name.starts_with("values") {
+                        // For values resources: values_strings.arsc.flat
+                        vec![format!(
+                            "{}_{}.arsc.flat",
+                            parent_name,
+                            file.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+                        )]
+                    } else {
+                        // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
+                        vec![format!("{}_{}.flat", parent_name, file_name)]
+                    };
 
-                            for flat_name in possible_names {
-                                let flat_path = output_dir.join(&flat_name);
-                                if flat_path.exists() {
-                                    return Ok(flat_path);
-                                }
-                            }
+                    for flat_name in possible_names {
+                        let flat_path = output_dir.join(&flat_name);
+                        if flat_path.exists() {
+                            return Ok(flat_path);
                         }
+                    }
+                }
 
                 anyhow::bail!("Could not find compiled flat file for {}", file.display())
             })
@@ -286,30 +289,31 @@ impl Aapt2 {
         //   - layout_activity_main.xml.flat for res/layout/activity_main.xml
         if let Some(parent) = resource_file.parent()
             && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str())
-                && let Some(file_name) = resource_file.file_name().and_then(|n| n.to_str()) {
-                    // Try different naming patterns based on resource type
-                    let possible_names = if parent_name.starts_with("values") {
-                        // For values resources: values_strings.arsc.flat
-                        vec![format!(
-                            "{}_{}.arsc.flat",
-                            parent_name,
-                            resource_file
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("")
-                        )]
-                    } else {
-                        // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
-                        vec![format!("{}_{}.flat", parent_name, file_name)]
-                    };
+            && let Some(file_name) = resource_file.file_name().and_then(|n| n.to_str())
+        {
+            // Try different naming patterns based on resource type
+            let possible_names = if parent_name.starts_with("values") {
+                // For values resources: values_strings.arsc.flat
+                vec![format!(
+                    "{}_{}.arsc.flat",
+                    parent_name,
+                    resource_file
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                )]
+            } else {
+                // For other resources (layout, drawable, etc.): layout_activity_main.xml.flat
+                vec![format!("{}_{}.flat", parent_name, file_name)]
+            };
 
-                    for flat_name in possible_names {
-                        let flat_path = output_dir.join(&flat_name);
-                        if flat_path.exists() {
-                            return Ok(flat_path);
-                        }
-                    }
+            for flat_name in possible_names {
+                let flat_path = output_dir.join(&flat_name);
+                if flat_path.exists() {
+                    return Ok(flat_path);
                 }
+            }
+        }
 
         anyhow::bail!(
             "Could not find compiled flat file for {}",
@@ -480,9 +484,10 @@ impl Aapt2 {
             for flat_file in flat_files {
                 if let Ok(metadata) = std::fs::metadata(flat_file)
                     && let Ok(modified) = metadata.modified()
-                        && modified > zip_modified {
-                            return true;
-                        }
+                    && modified > zip_modified
+                {
+                    return true;
+                }
             }
 
             false
@@ -517,11 +522,12 @@ impl Aapt2 {
                 // Strategy 2: If that didn't work, try using parent directory + filename
                 if file_name.is_none()
                     && let (Some(parent), Some(name)) = (flat_file.parent(), flat_file.file_name())
-                        && let (Some(parent_name), Some(file_name_str)) =
-                            (parent.file_name(), name.to_str())
-                            && let Some(parent_str) = parent_name.to_str() {
-                                file_name = Some(format!("{}/{}", parent_str, file_name_str));
-                            }
+                    && let (Some(parent_name), Some(file_name_str)) =
+                        (parent.file_name(), name.to_str())
+                    && let Some(parent_str) = parent_name.to_str()
+                {
+                    file_name = Some(format!("{}/{}", parent_str, file_name_str));
+                }
 
                 // Strategy 3: Fallback to just filename
                 let mut final_name = file_name.unwrap_or_else(|| {
@@ -599,11 +605,12 @@ impl Aapt2 {
                     if file_name.is_none()
                         && let (Some(parent), Some(name)) =
                             (flat_file.parent(), flat_file.file_name())
-                            && let (Some(parent_name), Some(file_name_str)) =
-                                (parent.file_name(), name.to_str())
-                                && let Some(parent_str) = parent_name.to_str() {
-                                    file_name = Some(format!("{}/{}", parent_str, file_name_str));
-                                }
+                        && let (Some(parent_name), Some(file_name_str)) =
+                            (parent.file_name(), name.to_str())
+                        && let Some(parent_str) = parent_name.to_str()
+                    {
+                        file_name = Some(format!("{}/{}", parent_str, file_name_str));
+                    }
 
                     // Strategy 3: Fallback to just filename
                     let mut final_name = file_name.unwrap_or_else(|| {

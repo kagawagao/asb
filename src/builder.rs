@@ -56,16 +56,16 @@ fn has_adaptive_icon_resources(resource_dirs: &[PathBuf]) -> bool {
             let path = entry.path();
             if path.is_file()
                 && let Some(parent) = path.parent()
-                    && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
-                        // Check for mipmap-anydpi (without version qualifier) or mipmap-anydpi-v* folders
-                        if parent_name.starts_with("mipmap-anydpi")
-                            && let Ok(content) = fs::read_to_string(path)
-                                && (content.contains("<adaptive-icon>")
-                                    || content.contains("<adaptive-icon "))
-                                {
-                                    return true;
-                                }
-                    }
+                && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str())
+            {
+                // Check for mipmap-anydpi (without version qualifier) or mipmap-anydpi-v* folders
+                if parent_name.starts_with("mipmap-anydpi")
+                    && let Ok(content) = fs::read_to_string(path)
+                    && (content.contains("<adaptive-icon>") || content.contains("<adaptive-icon "))
+                {
+                    return true;
+                }
+            }
         }
     }
     false
@@ -206,12 +206,13 @@ impl SkinBuilder {
         let temp_dir = build_dir.join(".temp");
 
         if let Some(aar_files) = &self.config.aar_files
-            && !aar_files.is_empty() {
-                pb.set_message("Extracting AARs...");
-                info!("Extracting {} AAR files...", aar_files.len());
-                aar_infos = AarExtractor::extract_aars(aar_files, &temp_dir)?;
-                pb.inc(1);
-            }
+            && !aar_files.is_empty()
+        {
+            pb.set_message("Extracting AARs...");
+            info!("Extracting {} AAR files...", aar_files.len());
+            aar_infos = AarExtractor::extract_aars(aar_files, &temp_dir)?;
+            pb.inc(1);
+        }
 
         // Collect all resource directories with their priorities
         // Following Android standard priority: Library (AAR) < Additional < Main
@@ -344,7 +345,7 @@ impl SkinBuilder {
                         priority
                     );
                     base_flat_files.extend(files.clone());
-                },
+                }
                 ResourcePriority::Additional(_) => {
                     // Additional resources are base (medium priority)
                     debug!(
@@ -354,7 +355,7 @@ impl SkinBuilder {
                         priority
                     );
                     base_flat_files.extend(files.clone());
-                },
+                }
                 ResourcePriority::Main => {
                     // Main resources are overlay (highest priority)
                     debug!(
@@ -364,7 +365,7 @@ impl SkinBuilder {
                         priority
                     );
                     overlay_flat_files.push(files.clone());
-                },
+                }
             }
         }
 
@@ -435,7 +436,8 @@ impl SkinBuilder {
         info!("Linking resources with Android resource priority strategy...");
         let output_filename = self
             .config
-            .output_file.clone()
+            .output_file
+            .clone()
             .unwrap_or_else(|| format!("{}.skin", self.config.package_name));
 
         let output_apk = self.config.output_dir.join(output_filename);
@@ -717,13 +719,14 @@ impl SkinBuilder {
 
             // Check if file is in a layout directory and skip it
             if let Some(parent) = path.parent()
-                && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str()) {
-                    // Check for layout directories (layout, layout-land, layout-sw600dp, etc.)
-                    if parent_name.starts_with("layout") {
-                        debug!("Filtering out layout file: {}", path.display());
-                        continue;
-                    }
+                && let Some(parent_name) = parent.file_name().and_then(|n| n.to_str())
+            {
+                // Check for layout directories (layout, layout-land, layout-sw600dp, etc.)
+                if parent_name.starts_with("layout") {
+                    debug!("Filtering out layout file: {}", path.display());
+                    continue;
                 }
+            }
 
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 // Skip hidden files, system files, and specific resource files
@@ -775,9 +778,10 @@ impl SkinBuilder {
                 std::fs::remove_dir_all(cache_dir)?;
             }
         } else if let Some(build_dir) = &self.config.build_dir
-            && build_dir.exists() {
-                std::fs::remove_dir_all(build_dir)?;
-            }
+            && build_dir.exists()
+        {
+            std::fs::remove_dir_all(build_dir)?;
+        }
 
         info!("Build artifacts cleaned");
         Ok(())

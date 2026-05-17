@@ -172,7 +172,7 @@ impl Cli {
                     json,
                 )
                 .await
-            },
+            }
             Commands::Clean { config, output } => Self::run_clean(config, output),
             Commands::Version { aapt2 } => Self::run_version(aapt2),
             Commands::Init { dir } => Self::run_init(dir),
@@ -420,10 +420,10 @@ impl Cli {
                 match Self::save_failure_log(&package_name, &result.errors) {
                     Ok(log_path) => {
                         println!("\n  {}: {}", "Log saved to".yellow(), log_path.display());
-                    },
+                    }
                     Err(e) => {
                         warn!("Failed to save error log: {}", e);
-                    },
+                    }
                 }
 
                 std::process::exit(1);
@@ -610,7 +610,7 @@ impl Cli {
                     match result {
                         Ok(Ok((idx, _package_name, build_result))) => {
                             all_results.push((idx, build_result));
-                        },
+                        }
                         Ok(Err((package_name, e))) => {
                             error!("Build error for package '{}': {}", package_name, e);
                             // Print full error chain for debugging
@@ -622,11 +622,11 @@ impl Cli {
                                 depth += 1;
                             }
                             fail_count += 1;
-                        },
+                        }
                         Err(e) => {
                             error!("Task join error: {}", e);
                             fail_count += 1;
-                        },
+                        }
                     }
                 }
             }
@@ -645,7 +645,7 @@ impl Cli {
                     match Self::build_single_config(config).await {
                         Ok(result) => {
                             all_results.push((config_with_idx.index, result));
-                        },
+                        }
                         Err(e) => {
                             error!("Build error for package '{}': {}", package_name, e);
                             // Print full error chain for debugging
@@ -657,7 +657,7 @@ impl Cli {
                                 depth += 1;
                             }
                             fail_count += 1;
-                        },
+                        }
                     }
                 }
             }
@@ -764,10 +764,10 @@ impl Cli {
                                     "Log saved to".yellow(),
                                     log_path.display()
                                 );
-                            },
+                            }
                             Err(e) => {
                                 warn!("Failed to save error log for {}: {}", package_name, e);
-                            },
+                            }
                         }
                     }
                 }

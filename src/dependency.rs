@@ -194,10 +194,7 @@ fn topological_sort(
     // We need: dependency -> dependents for topological sort
     for (dependent, deps) in dependencies {
         for &dependency in deps {
-            adj_list
-                .entry(dependency)
-                .or_default()
-                .push(*dependent);
+            adj_list.entry(dependency).or_default().push(*dependent);
             in_degree[*dependent] += 1;
         }
     }

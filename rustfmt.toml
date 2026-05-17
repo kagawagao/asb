@@ -11,7 +11,6 @@ use_small_heuristics = "Default"
 reorder_imports = true
 
 # Code structure
-match_block_trailing_comma = true
 
 # Formatting details
 use_try_shorthand = true

@@ -20,19 +20,21 @@ fn find_highest_android_jar() -> Option<PathBuf> {
     if let Ok(entries) = std::fs::read_dir(&platforms_dir) {
         for entry in entries.flatten() {
             if let Ok(file_type) = entry.file_type()
-                && file_type.is_dir() {
-                    let dir_name = entry.file_name();
-                    let dir_name_str = dir_name.to_string_lossy();
+                && file_type.is_dir()
+            {
+                let dir_name = entry.file_name();
+                let dir_name_str = dir_name.to_string_lossy();
 
-                    // Extract version from "android-XX" format
-                    if let Some(version_str) = dir_name_str.strip_prefix("android-")
-                        && let Ok(version) = version_str.parse::<u32>() {
-                            let android_jar = entry.path().join("android.jar");
-                            if android_jar.exists() {
-                                versions.push((version, android_jar));
-                            }
-                        }
+                // Extract version from "android-XX" format
+                if let Some(version_str) = dir_name_str.strip_prefix("android-")
+                    && let Ok(version) = version_str.parse::<u32>()
+                {
+                    let android_jar = entry.path().join("android.jar");
+                    if android_jar.exists() {
+                        versions.push((version, android_jar));
+                    }
                 }
+            }
         }
     }
 

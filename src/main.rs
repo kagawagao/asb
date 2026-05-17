@@ -39,14 +39,14 @@ async fn main() -> Result<()> {
                 let file_layer = fmt::layer().with_writer(log_file).with_ansi(false);
                 subscriber.with(console_layer).with(file_layer).init();
                 return cli.run().await;
-            },
+            }
             Err(e) => {
                 eprintln!(
                     "Warning: could not create log file '{}': {}",
                     log_path.display(),
                     e
                 );
-            },
+            }
         }
     }
 
