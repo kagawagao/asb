@@ -1,4 +1,4 @@
-#![allow(clippy::all)]
+#![allow(clippy::all, dead_code, unused_variables)]
 
 pub mod aapt2;
 pub mod aar;
