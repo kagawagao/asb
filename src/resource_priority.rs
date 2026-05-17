@@ -114,8 +114,6 @@ impl ResourcePriorityTracker {
                     info.source_path.display(),
                     existing.source_path.display()
                 );
-                self.conflicts
-                    .push((normalized.clone(), existing.clone(), info.clone()));
                 return false;
             }
         }
@@ -427,8 +425,9 @@ mod tests {
         };
         assert!(!tracker.add_resource(res2));
 
-        // Still only 1 resource (first one wins on equal priority).
-        assert_eq!(tracker.stats(), (1, 1));
+        // Still only 1 resource (first one wins on equal priority)
+        // Equal-priority conflicts are not tracked in conflicts vec
+        assert_eq!(tracker.stats(), (1, 0));
     }
 
     #[test]

@@ -834,7 +834,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
@@ -849,6 +849,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
 
@@ -910,7 +911,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
@@ -925,6 +926,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         let files = builder.find_resource_files(&res_dir)?;
 
@@ -976,7 +978,7 @@ mod tests {
             output_dir: output_dir.clone(),
             output_file: None,
             package_name: "com.test.builddir".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
@@ -991,6 +993,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let _builder = SkinBuilder::new(config)?;
 
         // Verify that intermediate files would go to build_dir
@@ -1039,7 +1042,7 @@ mod tests {
             output_dir: output_dir.clone(),
             output_file: None,
             package_name: "com.test.default".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None,
@@ -1054,6 +1057,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let _builder = SkinBuilder::new(config)?;
 
         // The builder should default to output_dir/.build for build_dir
@@ -1280,7 +1284,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test.noinc".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: None, // No incremental
@@ -1295,6 +1299,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         assert!(
             builder.cache.is_none(),
@@ -1315,7 +1320,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test.inc".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: Some(true),
@@ -1330,6 +1335,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         assert!(
             builder.cache.is_some(),
@@ -1350,7 +1356,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test.noinc2".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: Some(false),
@@ -1365,6 +1371,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         assert!(
             builder.cache.is_none(),
@@ -1386,7 +1393,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test.cachedir".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: Some(true),
@@ -1401,6 +1408,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         assert!(builder.cache.is_some(), "Cache should be created");
         assert!(
@@ -1423,7 +1431,7 @@ mod tests {
             output_dir: temp_dir.path().join("output"),
             output_file: None,
             package_name: "com.test.builddir".to_string(),
-            aapt2_path: None,
+            aapt2_path: Some(temp_dir.path().join("aapt2")),
             android_jar: Some(PathBuf::from("/fake/android.jar")),
             aar_files: None,
             incremental: Some(true),
@@ -1438,6 +1446,7 @@ mod tests {
             precompiled_dependencies: None,
         };
 
+        fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
         let builder = SkinBuilder::new(config)?;
         assert!(builder.cache.is_some(), "Cache should be created");
         assert!(

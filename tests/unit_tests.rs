@@ -47,13 +47,15 @@ fn test_config(
     build_dir: Option<PathBuf>,
 ) -> BuildConfig {
     let res_dir = create_minimal_res_dir(temp_dir.path());
+    // Create dummy aapt2 so SkinBuilder::new doesn't fail looking for the real one
+    fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
     BuildConfig {
         resource_dir: res_dir,
         manifest_path: temp_dir.path().join("AndroidManifest.xml"),
         output_dir: temp_dir.path().join("output"),
         output_file: None,
         package_name: package_name.to_string(),
-        aapt2_path: None,
+        aapt2_path: Some(temp_dir.path().join("aapt2")),
         android_jar: Some(PathBuf::from("/fake/android.jar")),
         aar_files: None,
         incremental,
@@ -606,13 +608,14 @@ fn test_common_dep_cache_corrupted_recovery() {
 #[test]
 fn test_skin_builder_new_missing_resource_dir() {
     let tmp = TempDir::new().unwrap();
+    fs::write(tmp.path().join("aapt2"), b"").unwrap();
     let config = BuildConfig {
         resource_dir: tmp.path().join("nonexistent_res"),
         manifest_path: tmp.path().join("AndroidManifest.xml"),
         output_dir: tmp.path().join("output"),
         output_file: None,
         package_name: "com.test.nodir".to_string(),
-        aapt2_path: None,
+        aapt2_path: Some(tmp.path().join("aapt2")),
         android_jar: Some(PathBuf::from("/fake/android.jar")),
         aar_files: None,
         incremental: None,
