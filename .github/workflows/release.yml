@@ -93,6 +93,7 @@ jobs:
         cd target/${{ matrix.target }}/release
         cp ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
         tar czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.asset_name }}
+        sha256sum ${{ matrix.asset_name }}.tar.gz > ${{ matrix.asset_name }}.tar.gz.sha256
 
     - name: Rename and compress binary (Windows)
       if: runner.os == 'Windows'
@@ -101,13 +102,16 @@ jobs:
         cd target/${{ matrix.target }}/release
         cp ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
         7z a ${{ matrix.asset_name }}.zip ${{ matrix.asset_name }}
+        sha256sum ${{ matrix.asset_name }}.zip > ${{ matrix.asset_name }}.zip.sha256
 
     - name: Upload artifact (Unix)
       if: runner.os != 'Windows'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.asset_name }}-archive
-        path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz
+        path: |
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.tar.gz.sha256
         if-no-files-found: error
 
     - name: Upload artifact (Windows)
@@ -115,7 +119,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.asset_name }}-archive
-        path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}.zip
+        path: |
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.zip
+          target/${{ matrix.target }}/release/${{ matrix.asset_name }}.zip.sha256
         if-no-files-found: error
 
   release:

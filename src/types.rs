@@ -863,7 +863,7 @@ pub struct AarInfo {
 }
 
 /// Build result
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct BuildResult {
     pub success: bool,
     pub apk_path: Option<PathBuf>,

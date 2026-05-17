@@ -1,4 +1,5 @@
 use anyhow::Result;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
@@ -141,6 +142,18 @@ impl SkinBuilder {
     pub async fn build(&mut self) -> Result<BuildResult> {
         let build_start = std::time::Instant::now();
 
+        // Determine number of phases for progress bar
+        let has_aars = self.config.aar_files.as_ref().map_or(false, |a| !a.is_empty());
+        let phases = if has_aars { 4u64 } else { 3u64 };
+        let pb = ProgressBar::new(phases);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {msg}")
+                .unwrap()
+                .progress_chars("##-"),
+        );
+        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+
         info!("Starting build for package: {}", self.config.package_name);
 
         // Initialize rayon thread pool with CPU cores * 2
@@ -187,8 +200,10 @@ impl SkinBuilder {
 
         if let Some(aar_files) = &self.config.aar_files {
             if !aar_files.is_empty() {
+                pb.set_message("Extracting AARs...");
                 info!("Extracting {} AAR files...", aar_files.len());
                 aar_infos = AarExtractor::extract_aars(aar_files, &temp_dir)?;
+                pb.inc(1);
             }
         }
 
@@ -237,6 +252,15 @@ impl SkinBuilder {
         resource_dirs_with_priority.sort_by_key(|(_, priority, _)| priority.value());
 
         // Compile resources - each to its own subdirectory to avoid conflicts
+        pb.set_message("Compiling resources...");
+        // Use a spinner substyle for indeterminate compilation count
+        let compile_spinner = ProgressBar::new_spinner();
+        compile_spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.green} {msg}")
+                .unwrap(),
+        );
+        compile_spinner.set_message("Compiling resource files...");
         info!(
             "Compiling resources from {} directories...",
             resource_dirs_with_priority.len()
@@ -343,6 +367,8 @@ impl SkinBuilder {
 
         if total_flat_files == 0 {
             AarExtractor::cleanup_aars(&aar_infos)?;
+            compile_spinner.finish_and_clear();
+            pb.finish_with_message("Build failed: no resources found");
 
             // Provide helpful error message
             let mut error_msg = String::from("No resources found to compile.\n\n");
@@ -377,6 +403,8 @@ impl SkinBuilder {
             base_flat_files.len(),
             overlay_flat_files.len()
         );
+        compile_spinner.finish_with_message("Resource compilation complete");
+        pb.inc(1);
 
         // Save cache
         if let Some(cache) = &self.cache {
@@ -397,6 +425,7 @@ impl SkinBuilder {
         };
 
         // Link resources into skin package using overlay strategy
+        pb.set_message("Linking APK...");
         info!("Linking resources with Android resource priority strategy...");
         let output_filename = self
             .config
@@ -437,6 +466,8 @@ impl SkinBuilder {
             }
         }
 
+        pb.inc(1);
+
         if !link_result.success {
             return Ok(BuildResult {
                 success: false,
@@ -447,9 +478,12 @@ impl SkinBuilder {
         }
 
         // Add raw resource files to the skin package
+        pb.set_message("Finalizing...");
         info!("Adding resource files to skin package...");
         self.add_resources_to_apk(&output_apk, &valid_resource_dirs)?;
 
+        pb.inc(1);
+        pb.finish_with_message("Build complete");
         info!("Build completed successfully!");
         Ok(BuildResult {
             success: true,

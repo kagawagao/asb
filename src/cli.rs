@@ -19,6 +19,10 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub quiet: bool,
 
+    /// Write logs to a file in addition to stdout
+    #[arg(short = 'L', long, global = true)]
+    pub log_file: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -94,6 +98,10 @@ pub enum Commands {
         /// Only build configurations matching these package names
         #[arg(long, value_delimiter = ',')]
         packages: Vec<String>,
+
+        /// Output build result as JSON to stdout
+        #[arg(long)]
+        json: bool,
     },
 
     /// Clean build artifacts
@@ -142,6 +150,7 @@ impl Cli {
                 max_parallel_builds,
                 package_id,
                 packages,
+                json,
             } => {
                 Self::run_build(
                     config,
@@ -160,6 +169,7 @@ impl Cli {
                     max_parallel_builds,
                     package_id,
                     packages,
+                    json,
                 )
                 .await
             }
@@ -186,6 +196,7 @@ impl Cli {
         max_parallel_builds: Option<usize>,
         package_id: Option<String>,
         packages: Vec<String>,
+        json: bool,
     ) -> Result<()> {
         // Initialize rayon thread pool with CPU cores * 2
         // This is for resource compilation within each build
@@ -372,6 +383,14 @@ impl Cli {
             let mut builder = SkinBuilder::new(config)?;
             let result = builder.build().await?;
             let elapsed = start_time.elapsed();
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                if !result.success {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
 
             if result.success {
                 println!("{}", "\n✓ Skin package built successfully!".green().bold());
@@ -653,6 +672,38 @@ impl Cli {
             let elapsed = start_time.elapsed();
 
             // Display results
+            if json {
+                // Build a summary JSON with all results
+                let mut results_map = serde_json::Map::new();
+                for (idx, result) in &all_results {
+                    let package_name = original_configs
+                        .get(*idx)
+                        .map(|c| c.package_name.clone())
+                        .unwrap_or_else(|| format!("config_{}", idx));
+                    results_map.insert(
+                        package_name,
+                        serde_json::json!({
+                            "success": result.success,
+                            "apk_path": result.apk_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                            "errors": result.errors,
+                            "build_duration_secs": result.build_duration.as_secs_f64(),
+                        }),
+                    );
+                }
+                let summary = serde_json::json!({
+                    "total": original_configs.len(),
+                    "successful": success_count,
+                    "failed": fail_count,
+                    "total_time_secs": elapsed.as_secs_f64(),
+                    "results": results_map,
+                });
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+                if fail_count > 0 {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
+
             println!("\n{}", "Build Summary:".blue().bold());
             println!("  {}: {}", "Successful".green(), success_count);
             println!("  {}: {}", "Failed".red(), fail_count);
