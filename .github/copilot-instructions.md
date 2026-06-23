@@ -4,7 +4,7 @@
 
 ASB is a high-performance Rust CLI tool for packaging Android resource-only skin packages using `aapt2`. It wraps the Android `aapt2` binary to compile and link resource files into `.skin` packages, supporting incremental builds, parallel compilation, AAR dependencies, multi-app configurations, flavors, and stable resource IDs.
 
-- **Language**: Rust (edition 2021, requires Rust 1.70+)
+- **Language**: Rust (edition 2024, requires Rust 1.70+)
 - **Type**: CLI tool with a library interface (`lib` + `bin` targets)
 - **Key external dependency at runtime**: `aapt2` from the Android SDK
 
@@ -60,11 +60,12 @@ asb/
 ## Key Architectural Notes
 
 - **Config resolution order**: CLI args (highest) → `--config` file → `./asb.config.json`
-- **Config formats**: Single-app (`SkinConfig`) and multi-app (`MultiSkinConfig` with `apps` array). Both are defined in `src/types.rs`.
+- **Config formats**: Single-app (`BuildConfig`) and multi-app (`MultiAppConfig` with `apps` array). Both are defined in `src/types.rs`.
 - **Concurrency**: resource compilation uses Rayon (thread pool); multi-app builds use Tokio async tasks.
 - **Incremental builds**: SHA-256 hashes of source files are stored in `buildDir` (default `{outputDir}/.build`). The deprecated `cacheDir` field maps to the same location.
 - **Resource priority** (lowest → highest): AAR dependencies → `resourceDir` → `additionalResourceDirs`. Implemented via aapt2's `-R` overlay flag.
 - **Package ID**: defaults to `0x7f`; configurable via `packageId` field or `--package-id` flag.
+- **Assets**: raw files in the `assetsDir` directory are packaged directly into the APK's `assets/` path via `aapt2 link -A`. No compilation needed. Configurable via `assetsDir` config field or `--assets-dir` CLI flag.
 - **AndroidManifest.xml** is optional; a minimal one is auto-generated when omitted.
 - **`androidJar`** is optional; auto-detected from `$ANDROID_HOME/platforms/` (highest API level).
 - **Environment variables** in config paths (e.g., `${ANDROID_HOME}`) are expanded via `shellexpand`.

@@ -15,32 +15,34 @@ Thank you for your interest in contributing to Android Skin Builder!
 ```
 asb/
 ├── src/
-│   ├── aapt2.rs          # aapt2 wrapper with parallel support
-│   ├── aar.rs            # AAR extraction
-│   ├── builder.rs        # Main build orchestration
-│   ├── cache.rs          # Incremental build cache
-│   ├── cli.rs            # CLI interface
-│   ├── dependency.rs     # Multi-app dependency resolution
-│   ├── resource_priority.rs # Resource overlay and priority handling
-│   ├── merge.rs          # Internal package merging utilities
-│   ├── types.rs          # Type definitions
-│   └── main.rs           # Entry point
-├── examples/
-│   ├── simple-skin/      # Example skin project
-│   └── multi-theme/      # Multi-theme example
-├── target/
-│   └── release/
-│       └── asb           # Compiled binary
-└── Cargo.toml            # Rust dependencies
+│   ├── aapt2.rs               # aapt2 wrapper with parallel compile and overlay link
+│   ├── aar.rs                 # AAR file extraction
+│   ├── builder.rs             # Main build orchestration (SkinBuilder)
+│   ├── cache.rs               # Incremental build cache (SHA-256)
+│   ├── cli.rs                 # Clap CLI interface and build dispatch
+│   ├── dependency.rs          # Multi-app dependency resolution (topological sort)
+│   ├── resource_priority.rs   # Android resource overlay and priority handling
+│   ├── merge.rs               # Skin package merging/extraction (library API)
+│   ├── error.rs               # Library error types (thiserror)
+│   ├── types.rs               # Config structs (BuildConfig, AppConfig, etc.)
+│   ├── lib.rs                 # Library entry point
+│   └── main.rs                # Binary entry point
+├── tests/
+│   ├── integration_test.rs    # Config loading and flavor integration tests
+│   └── unit_tests.rs          # Additional unit tests
+├── examples/                  # Example skin projects
+├── Cargo.toml
+└── README.md
 ```
 
 ## Making Changes
 
 1. Create a new branch for your feature or bugfix
 2. Write clean, readable Rust code
-3. Follow the existing code style
-4. Update documentation if needed
-5. Test your changes thoroughly
+3. Follow the existing code style (`cargo fmt`)
+4. Add tests for new functionality
+5. Ensure `cargo build`, `cargo test`, and `cargo clippy` pass
+6. Update documentation if needed
 
 ## Submitting Pull Requests
 

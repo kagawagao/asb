@@ -8,6 +8,7 @@
 
 - 🎨 **资源打包** - 仅打包资源文件，支持热更新和插件化
 - 📦 **AAR 支持** - 自动提取和打包依赖 AAR 包中的资源
+- 🗂️ **Assets 支持** - 支持打包原始 assets 文件（字体、配置文件等），通过 `AssetManager` 访问
 - 🚀 **增量构建** - 支持增量打包，提升构建速度
 - ⚡ **并发编译** - 充分利用 CPU 多核性能，支持并行资源编译
 - 🔒 **资源 ID 稳定** - 支持 stable IDs，确保每次编译的资源 ID 不变
@@ -165,6 +166,9 @@ project/
 - `--package-id <id>` - 资源包 ID（如 "0x7f"），用于动态资源加载
 - `--max-parallel-builds <number>` - 多应用配置的最大并行构建数（默认为 CPU 核心数）
 - `--packages <names...>` - 过滤要构建的包名（逗号分隔），仅构建匹配的配置
+- `--assets-dir <path>` - Assets 目录路径（原始文件直接打包进 APK，无需编译）
+- `--json` - 以 JSON 格式输出构建结果
+- `-L, --log-file <path>` - 将日志写入指定文件
 
 **说明:**
 
@@ -213,6 +217,18 @@ asb build \
   --aar ./libs/library1.aar \
   --aar ./libs/library2.aar
 ```
+
+包含 Assets 目录（原始文件如字体、JSON 配置等）：
+
+```bash
+# CLI 方式
+asb build --assets-dir ./src/main/assets
+
+# 配置文件方式（asb.config.json）
+# "assetsDir": "./src/main/assets"
+```
+
+Assets 目录中的文件会被直接打包进 APK 的 `assets/` 路径，无需编译，可通过 Android 的 `AssetManager` 在运行时访问。
 
 完全使用命令行参数：
 
@@ -285,6 +301,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
   "versionCode": 1,
   "versionName": "1.0.0",
   "additionalResourceDirs": ["./extra-res"],
+  "assetsDir": "./src/main/assets",
   "stableIdsFile": "./stable-ids.txt",
   "packageId": "0x7f"
 }
@@ -374,6 +391,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
 | `stableIdsFile`          | string   | No       | stable IDs 文件路径，用于保持资源 ID 稳定                                                              |
 | `packageId`              | string   | No       | 资源包 ID（如 "0x7f"），用于动态资源加载（默认 "0x7f"）                                                |
 | `outputFile`             | string   | No       | 自定义输出文件名（默认为 `{packageName}.skin`）                                                        |
+| `assetsDir`              | string   | No       | Assets 目录路径，原始文件直接打包进 APK 的 `assets/` 路径（无需编译）                                  |
 
 #### 多应用配置选项
 
@@ -395,6 +413,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
 | `aarFiles`          | string[] | No       | 公共 AAR 文件列表                                                          |
 | `aapt2Path`         | string   | No       | 公共 aapt2 路径                                                            |
 | `stableIdsFile`     | string   | No       | 公共 stable IDs 文件                                                       |
+| `assetsDir`         | string   | No       | 公共 Assets 目录（可被应用级和 Flavor 级覆盖）                             |
 
 **应用级配置（apps 数组中的每个项）**：
 
@@ -411,6 +430,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
 | `versionName`            | string   | No       | 应用特定版本名称（覆盖公共配置）  |
 | `packageId`              | string   | No       | 应用特定资源包 ID（覆盖公共配置） |
 | `flavors`                | array    | No       | 应用的产品变体配置数组            |
+| `assetsDir`              | string   | No       | 应用特定 Assets 目录（覆盖公共配置）|
 
 **Flavor 配置选项**：
 
@@ -422,6 +442,7 @@ ASB 支持两种配置格式：**单应用配置** 和 **多应用配置**。
 | `versionCode`            | number   | No       | Flavor 特定版本号       |
 | `versionName`            | string   | No       | Flavor 特定版本名称     |
 | `packageId`              | string   | No       | Flavor 特定资源包 ID    |
+| `assetsDir`              | string   | No       | Flavor 特定 Assets 目录 |
 
 ### 配置说明
 
