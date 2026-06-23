@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-23
+
 ### Added
 
-- Add auto changelog generation after release using git-cliff
+- Assets directory packaging via `--assets-dir` CLI flag and `assetsDir` config (#24)
+- Optimizer module with typed errors, 118 tests, progress bars, `--json` output, and CI quality gate (#23)
+- Auto-generate and commit CHANGELOG.md on release using git-cliff (#22)
+
+### Documentation
+
+- Add CLAUDE.md with architecture guide and development conventions
+- Add assetsDir documentation to README, copilot-instructions, and CONTRIBUTING
 
 ## [2.0.2] - 2026-02-25
 
