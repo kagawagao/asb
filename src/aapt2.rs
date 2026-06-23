@@ -338,6 +338,7 @@ impl Aapt2 {
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
         compiled_dir: Option<&Path>, // Optional compiled directory for temp files
+        assets_dir: Option<&Path>,   // Optional assets directory
     ) -> Result<LinkResult> {
         debug!(
             "Linking {} base flat files with {} overlay sets",
@@ -358,6 +359,7 @@ impl Aapt2 {
             package_id,
             min_sdk_version,
             compiled_dir,
+            assets_dir,
         )
     }
 
@@ -377,6 +379,7 @@ impl Aapt2 {
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
         compiled_dir: Option<&Path>,
+        assets_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         // Calculate total flat file count
         let total_flat_files =
@@ -406,6 +409,7 @@ impl Aapt2 {
                 package_id,
                 min_sdk_version,
                 compiled_dir,
+                assets_dir,
             )
         } else {
             self.link_with_direct_args(
@@ -420,6 +424,7 @@ impl Aapt2 {
                 stable_ids_file,
                 package_id,
                 min_sdk_version,
+                assets_dir,
             )
         }
     }
@@ -439,6 +444,7 @@ impl Aapt2 {
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
         compiled_dir: Option<&Path>,
+        assets_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         use std::fs::File;
         use zip::CompressionMethod;
@@ -695,6 +701,11 @@ impl Aapt2 {
         let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
         cmd.arg("--package-id").arg(pkg_id);
 
+        // Add assets directory if configured
+        if let Some(assets) = assets_dir {
+            cmd.arg("-A").arg(assets);
+        }
+
         // Add base ZIP file
         cmd.arg(&base_zip);
 
@@ -735,6 +746,7 @@ impl Aapt2 {
             base_flat_files,
             overlay_flat_files,
             min_sdk_version,
+            assets_dir,
         )
     }
 
@@ -752,6 +764,7 @@ impl Aapt2 {
         stable_ids_file: Option<&Path>,
         package_id: Option<&str>,
         min_sdk_version: Option<u32>,
+        assets_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         let mut cmd = Command::new(&self.aapt2_path);
         cmd.arg("link")
@@ -796,6 +809,11 @@ impl Aapt2 {
         // Default to standard app package ID if not specified
         let pkg_id = package_id.unwrap_or(DEFAULT_PACKAGE_ID);
         cmd.arg("--package-id").arg(pkg_id);
+
+        // Add assets directory if configured
+        if let Some(assets) = assets_dir {
+            cmd.arg("-A").arg(assets);
+        }
 
         // Add base flat files (normal arguments)
         for flat_file in base_flat_files {
@@ -849,6 +867,7 @@ impl Aapt2 {
             base_flat_files,
             overlay_flat_files,
             min_sdk_version,
+            assets_dir,
         )
     }
 
@@ -867,6 +886,7 @@ impl Aapt2 {
         base_flat_files: &[PathBuf],
         overlay_flat_files: &[Vec<PathBuf>],
         min_sdk_version: Option<u32>,
+        assets_dir: Option<&Path>,
     ) -> Result<LinkResult> {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -908,6 +928,9 @@ impl Aapt2 {
                 " --package-id {}",
                 package_id.unwrap_or(DEFAULT_PACKAGE_ID)
             ));
+            if let Some(assets) = assets_dir {
+                error_msg.push_str(&format!(" -A {}", assets.display()));
+            }
 
             // Add file counts instead of listing all files
             error_msg.push_str(&format!(" [{}  base flat files]", base_flat_files.len()));

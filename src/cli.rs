@@ -102,6 +102,10 @@ pub enum Commands {
         /// Output build result as JSON to stdout
         #[arg(long)]
         json: bool,
+
+        /// Path to assets directory (raw files packaged directly into APK)
+        #[arg(long)]
+        assets_dir: Option<PathBuf>,
     },
 
     /// Clean build artifacts
@@ -151,6 +155,7 @@ impl Cli {
                 package_id,
                 packages,
                 json,
+                assets_dir,
             } => {
                 Self::run_build(
                     config,
@@ -170,6 +175,7 @@ impl Cli {
                     package_id,
                     packages,
                     json,
+                    assets_dir,
                 )
                 .await
             }
@@ -197,6 +203,7 @@ impl Cli {
         package_id: Option<String>,
         packages: Vec<String>,
         json: bool,
+        assets_dir: Option<PathBuf>,
     ) -> Result<()> {
         // Initialize rayon thread pool with CPU cores * 2
         // This is for resource compilation within each build
@@ -226,7 +233,8 @@ impl Cli {
             || version_name.is_some()
             || stable_ids.is_some()
             || max_parallel_builds.is_some()
-            || package_id.is_some();
+            || package_id.is_some()
+            || assets_dir.is_some();
 
         // Check if using defaults before moving config_file
         let using_defaults = config_file.is_none() && !PathBuf::from("./asb.config.json").exists();
@@ -336,6 +344,9 @@ impl Cli {
                 }
                 if let Some(ref pid) = package_id {
                     build_config.package_id = Some(pid.clone());
+                }
+                if let Some(ref ad) = assets_dir {
+                    build_config.assets_dir = Some(ad.clone());
                 }
             }
         }
@@ -1289,6 +1300,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
             BuildConfig {
                 resource_dir: PathBuf::from("./res2"),
@@ -1309,6 +1321,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
         ];
         let all_package_names: Vec<String> =
@@ -1345,6 +1358,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
             BuildConfig {
                 resource_dir: PathBuf::from("./res2"),
@@ -1365,6 +1379,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
         ];
         let packages: Vec<String> = vec!["com.example.app1".to_string()];
@@ -1397,6 +1412,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
             BuildConfig {
                 resource_dir: PathBuf::from("./res2"),
@@ -1417,6 +1433,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
         ];
         let packages: Vec<String> = vec!["com.a".to_string(), "com.b".to_string()];
@@ -1513,6 +1530,7 @@ mod tests {
                 stable_ids_file: None,
                 package_id: None,
                 precompiled_dependencies: None,
+                assets_dir: None,
             },
         ];
 

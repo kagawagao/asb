@@ -462,6 +462,7 @@ impl SkinBuilder {
             self.config.package_id.as_deref(),
             min_sdk_version,
             Some(&compiled_dir), // Pass compiled_dir to avoid conflicts in multi-task builds
+            self.config.assets_dir.as_deref(),
         )?;
 
         // Keep manifest cached in compiled_dir for reuse in subsequent builds
@@ -844,6 +845,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -921,6 +923,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -988,6 +991,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -1052,6 +1056,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -1294,6 +1299,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -1330,6 +1336,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -1366,6 +1373,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -1403,6 +1411,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();
@@ -1441,6 +1450,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         };
 
         fs::write(temp_dir.path().join("aapt2"), b"").unwrap();

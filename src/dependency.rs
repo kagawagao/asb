@@ -335,6 +335,7 @@ mod tests {
             stable_ids_file: None,
             package_id: None,
             precompiled_dependencies: None,
+            assets_dir: None,
         }
     }
 
@@ -557,6 +558,7 @@ mod tests {
             version_name: None,
             flavors: None,
             package_id: None,
+            assets_dir: None,
         };
 
         // App with flavors that both depend on base
@@ -583,6 +585,7 @@ mod tests {
                     version_code: None,
                     version_name: None,
                     package_id: None,
+                    assets_dir: None,
                 },
                 FlavorConfig {
                     name: "flavor2".to_string(),
@@ -596,9 +599,11 @@ mod tests {
                     version_code: None,
                     version_name: None,
                     package_id: None,
+                    assets_dir: None,
                 },
             ]),
             package_id: None,
+            assets_dir: None,
         };
 
         let multi_config = MultiAppConfig {
@@ -616,6 +621,7 @@ mod tests {
             stable_ids_file: None,
             max_parallel_builds: None,
             package_id: None,
+            assets_dir: None,
             apps: vec![base_app, app_with_flavors],
         };
 
@@ -670,6 +676,7 @@ mod tests {
                     version_code: None,
                     version_name: None,
                     package_id: None,
+                    assets_dir: None,
                 },
                 FlavorConfig {
                     name: "day".to_string(),
@@ -683,9 +690,11 @@ mod tests {
                     version_code: None,
                     version_name: None,
                     package_id: None,
+                    assets_dir: None,
                 },
             ]),
             package_id: None,
+            assets_dir: None,
         };
 
         let app_b = AppConfig {
@@ -711,6 +720,7 @@ mod tests {
                     version_code: None,
                     version_name: None,
                     package_id: None,
+                    assets_dir: None,
                 },
                 FlavorConfig {
                     name: "day".to_string(),
@@ -724,9 +734,11 @@ mod tests {
                     version_code: None,
                     version_name: None,
                     package_id: None,
+                    assets_dir: None,
                 },
             ]),
             package_id: None,
+            assets_dir: None,
         };
 
         let multi_config = MultiAppConfig {
@@ -744,6 +756,7 @@ mod tests {
             stable_ids_file: None,
             max_parallel_builds: None,
             package_id: None,
+            assets_dir: None,
             apps: vec![app_a, app_b],
         };
 

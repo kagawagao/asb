@@ -103,6 +103,10 @@ pub struct FlavorConfig {
     /// e.g., "0x7f" for standard apps, custom values for dynamic loading
     #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
     pub package_id: Option<String>,
+
+    /// Flavor-specific assets directory override (optional)
+    #[serde(rename = "assetsDir", skip_serializing_if = "Option::is_none")]
+    pub assets_dir: Option<PathBuf>,
 }
 
 /// App-specific configuration in multi-app mode
@@ -161,6 +165,10 @@ pub struct AppConfig {
     /// e.g., "0x7f" for standard apps, custom values for dynamic loading
     #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
     pub package_id: Option<String>,
+
+    /// App-specific assets directory override (optional)
+    #[serde(rename = "assetsDir", skip_serializing_if = "Option::is_none")]
+    pub assets_dir: Option<PathBuf>,
 }
 
 /// Multi-app configuration wrapper
@@ -231,6 +239,10 @@ pub struct MultiAppConfig {
     #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
     pub package_id: Option<String>,
 
+    /// Common assets directory (optional)
+    #[serde(rename = "assetsDir", skip_serializing_if = "Option::is_none")]
+    pub assets_dir: Option<PathBuf>,
+
     /// Array of app-specific configurations
     pub apps: Vec<AppConfig>,
 }
@@ -255,6 +267,7 @@ impl MultiAppConfig {
         let common_version_name = self.version_name.clone();
         let common_stable_ids_file = self.stable_ids_file.clone();
         let common_package_id = self.package_id.clone();
+        let common_assets_dir = self.assets_dir.clone();
 
         for app in self.apps {
             // If app has flavors, create a BuildConfig for each flavor
@@ -276,6 +289,7 @@ impl MultiAppConfig {
                         &common_version_name,
                         &common_stable_ids_file,
                         &common_package_id,
+                        &common_assets_dir,
                     ));
                 }
             } else {
@@ -295,6 +309,7 @@ impl MultiAppConfig {
                     &common_version_name,
                     &common_stable_ids_file,
                     &common_package_id,
+                    &common_assets_dir,
                 ));
             }
         }
@@ -319,6 +334,7 @@ impl MultiAppConfig {
         common_version_name: &Option<String>,
         common_stable_ids_file: &Option<PathBuf>,
         common_package_id: &Option<String>,
+        common_assets_dir: &Option<PathBuf>,
     ) -> BuildConfig {
         // Determine base_dir: app-specific > common
         let base_dir = app.base_dir.clone().or_else(|| common_base_dir.clone());
@@ -365,6 +381,7 @@ impl MultiAppConfig {
             stable_ids_file: common_stable_ids_file.clone(),
             package_id: app.package_id.clone().or_else(|| common_package_id.clone()),
             precompiled_dependencies: None,
+            assets_dir: app.assets_dir.clone().or_else(|| common_assets_dir.clone()),
         }
     }
 
@@ -386,6 +403,7 @@ impl MultiAppConfig {
         common_version_name: &Option<String>,
         common_stable_ids_file: &Option<PathBuf>,
         common_package_id: &Option<String>,
+        common_assets_dir: &Option<PathBuf>,
     ) -> BuildConfig {
         // Determine base_dir: flavor > app > common
         let base_dir = flavor
@@ -463,6 +481,11 @@ impl MultiAppConfig {
                 .or_else(|| app.package_id.clone())
                 .or_else(|| common_package_id.clone()),
             precompiled_dependencies: None,
+            assets_dir: flavor
+                .assets_dir
+                .clone()
+                .or_else(|| app.assets_dir.clone())
+                .or_else(|| common_assets_dir.clone()),
         }
     }
 }
@@ -549,6 +572,12 @@ pub struct BuildConfig {
     #[serde(rename = "packageId", skip_serializing_if = "Option::is_none")]
     pub package_id: Option<String>,
 
+    /// Path to the assets directory (optional)
+    /// Assets are raw files that are packaged directly into the APK
+    /// without compilation, accessible via Android's AssetManager
+    #[serde(rename = "assetsDir", skip_serializing_if = "Option::is_none")]
+    pub assets_dir: Option<PathBuf>,
+
     /// Pre-compiled common dependencies (runtime only, not serialized)
     /// Map from resource directory path to compiled flat files
     #[serde(skip, default)]
@@ -578,6 +607,7 @@ impl BuildConfig {
             stable_ids_file: None,
             package_id: Some(DEFAULT_PACKAGE_ID.to_string()),
             precompiled_dependencies: None,
+            assets_dir: None,
         }
     }
 
@@ -669,6 +699,12 @@ impl BuildConfig {
                     .map(|p| PathBuf::from(Self::expand_env_vars(&p.to_string_lossy())))
                     .collect(),
             );
+        }
+
+        if let Some(assets) = &self.assets_dir {
+            self.assets_dir = Some(PathBuf::from(Self::expand_env_vars(
+                &assets.to_string_lossy(),
+            )));
         }
     }
 

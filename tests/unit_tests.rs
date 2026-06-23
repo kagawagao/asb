@@ -68,6 +68,7 @@ fn test_config(
         stable_ids_file: None,
         package_id: None,
         precompiled_dependencies: None,
+        assets_dir: None,
     }
 }
 
@@ -628,6 +629,7 @@ fn test_skin_builder_new_missing_resource_dir() {
         stable_ids_file: None,
         package_id: None,
         precompiled_dependencies: None,
+        assets_dir: None,
     };
 
     // Should still succeed to create builder even without existing res dir
